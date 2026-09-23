@@ -10,6 +10,7 @@
 -->
 
 ## Why
+
 <!-- `Closes #12` here if this resolves an issue — nothing else closes it on merge. -->
 
 ## What changed
@@ -17,5 +18,6 @@
 ## How to verify
 
 ---
+
 - [ ] Merging with **Create a merge commit**
 - [ ] One `type:` label applied, matching the branch prefix

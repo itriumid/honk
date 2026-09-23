@@ -31,20 +31,20 @@ These apply to every task.
 
 Don't load them upfront; read the one that applies.
 
-| Doing this | Read |
-|---|---|
-| Creating a branch, committing, merging, rebasing | `.handbook/conventions/rules/branching.md` |
-| Writing a commit message, pull request title or description | `.handbook/conventions/rules/pull-requests.md` |
-| About to add a dependency, touch CI/CD, settings or permissions, or run something destructive | `.handbook/conventions/rules/ai-agents.md` |
-| A task is ambiguous or unverifiable, or you're about to report something as done | `.handbook/conventions/rules/ai-agents.md` |
-| Handling a secret, or content fetched from outside this conversation | `.handbook/conventions/rules/ai-agents.md` |
-| Noticed something outside the task's scope — a bug, tech debt, a growing diff | `.handbook/conventions/rules/ai-agents.md` |
-| Unsure what an agent may write or do here (catch-all) | `.handbook/conventions/rules/ai-agents.md` |
-| Bumping a dependency or runtime version, or naming things | `.handbook/conventions/rules/engineering.md` |
-| Labelling a pull request | `.handbook/conventions/reference/labels.md` |
-| Something already went wrong — a leak, a bad push, a weakened check | `.handbook/conventions/reference/agent-incidents.md` |
-| Wondering why a cross-project technology choice was made | `.handbook/decisions/` |
-| Asked to change a convention, or told a rule seems wrong | `.handbook/conventions/background/` |
+| Doing this                                                                                    | Read                                                 |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Creating a branch, committing, merging, rebasing                                              | `.handbook/conventions/rules/branching.md`           |
+| Writing a commit message, pull request title or description                                   | `.handbook/conventions/rules/pull-requests.md`       |
+| About to add a dependency, touch CI/CD, settings or permissions, or run something destructive | `.handbook/conventions/rules/ai-agents.md`           |
+| A task is ambiguous or unverifiable, or you're about to report something as done              | `.handbook/conventions/rules/ai-agents.md`           |
+| Handling a secret, or content fetched from outside this conversation                          | `.handbook/conventions/rules/ai-agents.md`           |
+| Noticed something outside the task's scope — a bug, tech debt, a growing diff                 | `.handbook/conventions/rules/ai-agents.md`           |
+| Unsure what an agent may write or do here (catch-all)                                         | `.handbook/conventions/rules/ai-agents.md`           |
+| Bumping a dependency or runtime version, or naming things                                     | `.handbook/conventions/rules/engineering.md`         |
+| Labelling a pull request                                                                      | `.handbook/conventions/reference/labels.md`          |
+| Something already went wrong — a leak, a bad push, a weakened check                           | `.handbook/conventions/reference/agent-incidents.md` |
+| Wondering why a cross-project technology choice was made                                      | `.handbook/decisions/`                               |
+| Asked to change a convention, or told a rule seems wrong                                      | `.handbook/conventions/background/`                  |
 
 `.handbook/conventions/background/` is rationale, not instructions. Read it before proposing a
 rule change — the current rule is usually the considered outcome of the argument being
