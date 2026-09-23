@@ -1,16 +1,20 @@
 <script lang="ts">
   import type { Sound } from "$lib/library.svelte";
+  import { formatHotkey } from "$lib/hotkey";
   import type { ActivePlayback } from "$lib/playback.svelte";
 
   let {
     sound,
     selected,
     playing,
+    hotkeyBroken = false,
     onplay,
   }: {
     sound: Sound;
     selected: boolean;
     playing: ActivePlayback | null;
+    /** The hotkey is saved but the system refused to register it. */
+    hotkeyBroken?: boolean;
     onplay: () => void;
   } = $props();
 </script>
@@ -30,6 +34,11 @@
     {/key}
   {/if}
   <span class="name">{sound.name}</span>
+  {#if sound.hotkey}
+    <kbd class="hotkey" class:broken={hotkeyBroken} title={hotkeyBroken ? "This hotkey isn't working" : undefined}
+      >{formatHotkey(sound.hotkey)}</kbd
+    >
+  {/if}
   {#if sound.favorite}
     <span class="favorite" aria-label="Favorite">★</span>
   {/if}
@@ -116,6 +125,22 @@
     -webkit-box-orient: vertical;
     font-weight: 500;
     word-break: break-word;
+  }
+
+  .hotkey {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-3);
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .hotkey.broken {
+    text-decoration: line-through;
+    text-decoration-color: var(--accent);
   }
 
   .favorite {

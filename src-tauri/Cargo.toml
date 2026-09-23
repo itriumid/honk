@@ -26,6 +26,7 @@ rodio = { version = "0.22", default-features = false, features = ["playback", "m
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.0"
 tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

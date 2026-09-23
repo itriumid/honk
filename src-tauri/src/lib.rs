@@ -1,5 +1,6 @@
 mod audio_engine;
 mod commands;
+mod hotkeys;
 mod library;
 mod output_devices;
 
@@ -10,6 +11,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(hotkeys::handle)
+                .build(),
+        )
         .setup(|app| {
             let data_directory = app.path().app_data_dir()?;
             app.manage(library::Library::open(&data_directory)?);
@@ -18,6 +24,13 @@ pub fn run() {
             app.manage(audio_engine::AudioEngine::start(move |event| {
                 let _ = handle.emit("playback", event);
             }));
+
+            app.manage(hotkeys::Hotkeys::default());
+            // A shortcut another app owns shouldn't stop the app from starting; the failures
+            // are reported to the frontend instead.
+            if let Err(error) = hotkeys::register_all(app.handle()) {
+                eprintln!("could not register hotkeys: {error}");
+            }
             Ok(())
         })
         .manage(commands::SoundCache::default())
@@ -32,6 +45,10 @@ pub fn run() {
             commands::set_sound_volume,
             commands::set_sound_favorite,
             commands::delete_sound,
+            commands::set_sound_hotkey,
+            commands::stop_all_hotkey,
+            commands::set_stop_all_hotkey,
+            commands::hotkey_failures,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
