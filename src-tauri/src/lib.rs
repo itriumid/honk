@@ -1,5 +1,6 @@
 mod audio_engine;
 mod commands;
+mod library;
 mod output_devices;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
