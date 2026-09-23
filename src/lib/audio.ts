@@ -12,8 +12,7 @@ export const listOutputDevices = () => invoke<OutputDevice[]>("list_output_devic
 export const setOutputDevices = (primary: string | null, secondary: string | null) =>
   invoke<void>("set_output_devices", { primary, secondary });
 
-/** `volume` is linear, 0 to 1. */
-export const playSound = (path: string, volume: number) =>
-  invoke<void>("play_sound", { path, volume });
+/** Plays a library sound at its saved volume. */
+export const playSound = (id: number) => invoke<void>("play_sound", { id });
 
 export const stopAll = () => invoke<void>("stop_all");
