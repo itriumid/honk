@@ -11,6 +11,8 @@ A lightweight, cross-platform soundboard built with Tauri. Import your sounds, b
 - **Global hotkeys** per pad, plus one to open the popover
 - **Menu bar popover** (macOS): search, favorites grid, volume, stop all
 - **Share libraries**: export a whole library (or one category) as a single `.honk` file, a zip holding a `manifest.json` plus the audio files, and import one to merge it into your own
+  - Exports always include hotkeys; importing them is opt-in (off by default), and conflicts with existing bindings are shown for you to skip or replace
+  - Duplicate sounds are detected by content hash, not filename
 - **Output device picker** with dual output (e.g. headphones + a virtual cable like BlackHole or VB-Cable)
 
 ## Architecture
