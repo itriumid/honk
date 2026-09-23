@@ -149,9 +149,16 @@ pub fn show_main_window(app: &AppHandle) {
     }
 }
 
-/// Where the popover goes on the primary monitor, in physical pixels.
+/// Where the popover goes, in physical pixels, on whichever display holds the tray icon — each
+/// display has its own bounds and scale.
 fn position_for(window: &WebviewWindow, anchor: Option<Rect>) -> Option<PhysicalPosition<i32>> {
-    let monitor = window.primary_monitor().ok().flatten()?;
+    let primary = window.primary_monitor().ok().flatten()?;
+    let monitor = anchor
+        .and_then(|rect| {
+            let point = rect.position.to_physical::<f64>(primary.scale_factor());
+            window.monitor_from_point(point.x, point.y).ok().flatten()
+        })
+        .unwrap_or(primary);
     let scale = monitor.scale_factor();
     let screen = Screen {
         left: monitor.position().x as f64,
