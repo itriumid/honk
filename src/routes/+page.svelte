@@ -4,6 +4,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { playSound, stopAll } from "$lib/audio";
   import { fileName, library, type ImportSummary } from "$lib/library.svelte";
+  import { playback } from "$lib/playback.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
@@ -52,6 +53,7 @@
 
   onMount(() => {
     attempt(() => library.refresh());
+    const stopFollowingPlayback = playback.follow();
     const stopListening = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type === "enter" || event.payload.type === "over") dragging = true;
       else if (event.payload.type === "leave") dragging = false;
@@ -60,7 +62,10 @@
         importPaths(event.payload.paths);
       }
     });
-    return () => stopListening.then((unlisten) => unlisten());
+    return () => {
+      stopFollowingPlayback();
+      stopListening.then((unlisten) => unlisten());
+    };
   });
 </script>
 
@@ -87,6 +92,7 @@
           <SoundPad
             {sound}
             selected={library.selectedId === sound.id}
+            playing={playback.latestFor(sound.id)}
             onplay={() => play(sound.id)}
           />
         {/each}
