@@ -3,6 +3,7 @@ mod commands;
 mod hotkeys;
 mod library;
 mod output_devices;
+mod popover;
 
 use tauri::{Emitter, Manager};
 
@@ -25,6 +26,10 @@ pub fn run() {
                 let _ = handle.emit("playback", event);
             }));
 
+            app.manage(popover::PopoverState::default());
+            popover::create(app.handle())?;
+            popover::create_tray(app.handle())?;
+
             app.manage(hotkeys::Hotkeys::default());
             // A shortcut another app owns shouldn't stop the app from starting; the failures
             // are reported to the frontend instead.
@@ -46,10 +51,21 @@ pub fn run() {
             commands::set_sound_favorite,
             commands::delete_sound,
             commands::set_sound_hotkey,
-            commands::stop_all_hotkey,
-            commands::set_stop_all_hotkey,
+            commands::app_hotkeys,
+            commands::set_app_hotkey,
+            commands::show_main_window,
+            commands::hide_popover,
             commands::hotkey_failures,
         ])
+        .on_window_event(|window, event| {
+            // A menu bar app keeps running when its window closes; the tray brings it back.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

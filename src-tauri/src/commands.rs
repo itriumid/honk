@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::audio_engine::{AudioEngine, SoundData};
 use crate::hotkeys;
-use crate::library::{ImportResult, Library, Sound};
+use crate::library::{AppShortcut, ImportResult, Library, Sound};
 use crate::output_devices::{self, OutputDevice};
+use crate::popover;
 
 /// Stored file contents by sound id, so replaying a sound never touches the disk.
 #[derive(Default)]
@@ -155,24 +156,47 @@ pub async fn set_sound_hotkey(
     Ok(sound)
 }
 
-#[tauri::command]
-pub async fn stop_all_hotkey(library: State<'_, Library>) -> Result<Option<String>, String> {
-    library.stop_all_hotkey()
+#[derive(serde::Serialize)]
+pub struct AppHotkeys {
+    stop_all: Option<String>,
+    toggle_popover: Option<String>,
 }
 
 #[tauri::command]
-pub async fn set_stop_all_hotkey(
+pub async fn app_hotkeys(library: State<'_, Library>) -> Result<AppHotkeys, String> {
+    Ok(AppHotkeys {
+        stop_all: library.app_hotkey(AppShortcut::StopAll)?,
+        toggle_popover: library.app_hotkey(AppShortcut::TogglePopover)?,
+    })
+}
+
+#[tauri::command]
+pub async fn set_app_hotkey(
     app: AppHandle,
     library: State<'_, Library>,
+    shortcut: AppShortcut,
     hotkey: Option<String>,
 ) -> Result<Option<String>, String> {
     let hotkey = hotkey.as_deref().map(hotkeys::normalize).transpose()?;
-    let previous = library.stop_all_hotkey()?;
-    library.set_stop_all_hotkey(hotkey.as_deref())?;
+    let previous = library.app_hotkey(shortcut)?;
+    library.set_app_hotkey(shortcut, hotkey.as_deref())?;
     register_or_revert(&app, hotkey.as_deref(), || {
-        library.set_stop_all_hotkey(previous.as_deref())
+        library.set_app_hotkey(shortcut, previous.as_deref())
     })?;
     Ok(hotkey)
+}
+
+#[tauri::command]
+pub async fn show_main_window(app: AppHandle) {
+    popover::show_main_window(&app);
+}
+
+#[tauri::command]
+pub async fn hide_popover(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(popover::LABEL) {
+        window.hide().map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 /// Saved hotkeys that aren't working because the system refused them, with why.
