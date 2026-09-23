@@ -30,6 +30,14 @@ pub struct Hotkeys {
     registering: Mutex<()>,
 }
 
+/// How the modifiers a hotkey needs read on this platform; `super` is ⌘, Win or Super.
+#[cfg(target_os = "macos")]
+const REQUIRED_MODIFIERS: &str = "⌘, ⌥ or ⌃";
+#[cfg(target_os = "windows")]
+const REQUIRED_MODIFIERS: &str = "Ctrl, Alt or Win";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const REQUIRED_MODIFIERS: &str = "Ctrl, Alt or Super";
+
 /// Parses a shortcut into its canonical form (`shift+control+alt+super+Key`), which is what gets
 /// stored. Requires a modifier other than Shift, so ordinary typing can never trigger a sound.
 pub fn normalize(hotkey: &str) -> Result<String, String> {
@@ -39,7 +47,10 @@ pub fn normalize(hotkey: &str) -> Result<String, String> {
         .mods
         .intersects(Modifiers::SUPER | Modifiers::ALT | Modifiers::CONTROL)
     {
-        return Err("a shortcut needs ⌘, ⌥ or ⌃ — otherwise typing would trigger it".to_string());
+        return Err(format!(
+            "a shortcut needs {} — otherwise typing would trigger it",
+            REQUIRED_MODIFIERS
+        ));
     }
     Ok(shortcut.into_string())
 }

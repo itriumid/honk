@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { commonConflict, formatHotkey, fromKeyboardEvent } from "$lib/hotkey";
+  import { commonConflict, formatHotkey, fromKeyboardEvent, requiredModifiers } from "$lib/hotkey";
 
   let {
     hotkey,
@@ -63,7 +63,7 @@
   {/if}
 </div>
 {#if recording}
-  <p class="hint">Include ⌘, ⌥ or ⌃. Esc cancels.</p>
+  <p class="hint">Include {requiredModifiers()}. Esc cancels.</p>
 {:else if error}
   <p class="problem" role="alert">{error}</p>
 {:else if failure}
