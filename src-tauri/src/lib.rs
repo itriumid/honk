@@ -26,6 +26,9 @@ pub fn run() {
                 let _ = handle.emit("playback", event);
             }));
 
+            let show_in_dock = app.state::<library::Library>().show_in_dock()?;
+            commands::apply_dock_visibility(app.handle(), show_in_dock)?;
+
             app.manage(popover::PopoverState::default());
             popover::create(app.handle())?;
             popover::create_tray(app.handle())?;
@@ -53,6 +56,8 @@ pub fn run() {
             commands::set_sound_hotkey,
             commands::app_hotkeys,
             commands::set_app_hotkey,
+            commands::show_in_dock,
+            commands::set_show_in_dock,
             commands::show_main_window,
             commands::hide_popover,
             commands::hotkey_failures,

@@ -187,6 +187,31 @@ pub async fn set_app_hotkey(
 }
 
 #[tauri::command]
+pub async fn show_in_dock(library: State<'_, Library>) -> Result<bool, String> {
+    library.show_in_dock()
+}
+
+/// Saves the preference and applies it now. A no-op outside macOS, which has no Dock.
+#[tauri::command]
+pub async fn set_show_in_dock(
+    app: AppHandle,
+    library: State<'_, Library>,
+    show: bool,
+) -> Result<(), String> {
+    library.set_show_in_dock(show)?;
+    apply_dock_visibility(&app, show)
+}
+
+pub fn apply_dock_visibility(app: &AppHandle, show: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    app.set_dock_visibility(show)
+        .map_err(|error| format!("could not change the Dock icon: {error}"))?;
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, show);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn show_main_window(app: AppHandle) {
     popover::show_main_window(&app);
 }
