@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatHotkey, fromKeyboardEvent } from "$lib/hotkey";
+  import { commonConflict, formatHotkey, fromKeyboardEvent } from "$lib/hotkey";
 
   let {
     hotkey,
@@ -68,6 +68,8 @@
   <p class="problem" role="alert">{error}</p>
 {:else if failure}
   <p class="problem" role="alert">Not working: {failure}</p>
+{:else if commonConflict(hotkey)}
+  <p class="problem">{commonConflict(hotkey)}</p>
 {/if}
 
 <style>

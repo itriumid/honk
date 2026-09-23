@@ -87,3 +87,39 @@ export function formatHotkey(hotkey: string): string {
   const modifiers = SYMBOL_ORDER.filter((modifier) => parts.includes(modifier));
   return modifiers.map((modifier) => SYMBOLS[modifier]).join("") + keyName(key);
 }
+
+/** Shortcuts nearly every Mac app (or macOS itself) already uses, and what they do there. */
+const COMMON_SHORTCUTS: Record<string, string> = {
+  "super+KeyA": "Select All",
+  "super+KeyC": "Copy",
+  "super+KeyF": "Find",
+  "super+KeyH": "Hide",
+  "super+KeyJ": "Downloads in most browsers",
+  "super+KeyL": "the address bar in most browsers",
+  "super+KeyM": "Minimize",
+  "super+KeyN": "New",
+  "super+KeyO": "Open",
+  "super+KeyP": "Print",
+  "super+KeyQ": "Quit",
+  "super+KeyR": "Reload in most browsers",
+  "super+KeyS": "Save",
+  "super+KeyT": "New Tab",
+  "super+KeyV": "Paste",
+  "super+KeyW": "Close",
+  "super+KeyX": "Cut",
+  "super+KeyZ": "Undo",
+  "shift+super+KeyZ": "Redo",
+  "shift+super+KeyS": "Save As",
+  "super+Comma": "Settings",
+  "super+Space": "Spotlight",
+  "super+Tab": "the app switcher",
+  "shift+super+Digit3": "a screenshot",
+  "shift+super+Digit4": "a screenshot",
+  "shift+super+Digit5": "the screenshot toolbar",
+};
+
+/** A warning when `hotkey` is one other apps rely on; Honk would take it from all of them. */
+export function commonConflict(hotkey: string | null): string | null {
+  if (!hotkey || !(hotkey in COMMON_SHORTCUTS)) return null;
+  return `${formatHotkey(hotkey)} is ${COMMON_SHORTCUTS[hotkey]} in other apps — Honk takes it from all of them while it runs.`;
+}
