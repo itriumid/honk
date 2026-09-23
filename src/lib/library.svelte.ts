@@ -6,6 +6,8 @@ export interface Sound {
   /** Linear, 0 to 1. */
   volume: number;
   favorite: boolean;
+  /** A global-shortcut string such as `alt+Digit1`; see `$lib/hotkey`. */
+  hotkey: string | null;
 }
 
 interface ImportResult {
@@ -24,11 +26,32 @@ export interface ImportSummary {
 class Library {
   sounds = $state<Sound[]>([]);
   selectedId = $state<number | null>(null);
+  stopAllHotkey = $state<string | null>(null);
+  /** Saved hotkeys the system refused to register, with why. */
+  hotkeyFailures = $state<Record<string, string>>({});
 
   selected = $derived(this.sounds.find((sound) => sound.id === this.selectedId) ?? null);
 
   async refresh() {
-    this.sounds = await invoke<Sound[]>("list_sounds");
+    [this.sounds, this.stopAllHotkey, this.hotkeyFailures] = await Promise.all([
+      invoke<Sound[]>("list_sounds"),
+      invoke<string | null>("stop_all_hotkey"),
+      invoke<Record<string, string>>("hotkey_failures"),
+    ]);
+  }
+
+  failureFor(hotkey: string | null): string | null {
+    return hotkey ? (this.hotkeyFailures[hotkey] ?? null) : null;
+  }
+
+  async setHotkey(id: number, hotkey: string | null) {
+    this.replace(await invoke<Sound>("set_sound_hotkey", { id, hotkey }));
+    this.hotkeyFailures = await invoke<Record<string, string>>("hotkey_failures");
+  }
+
+  async setStopAllHotkey(hotkey: string | null) {
+    this.stopAllHotkey = await invoke<string | null>("set_stop_all_hotkey", { hotkey });
+    this.hotkeyFailures = await invoke<Record<string, string>>("hotkey_failures");
   }
 
   async import(paths: string[]): Promise<ImportSummary> {

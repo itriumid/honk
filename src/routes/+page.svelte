@@ -5,6 +5,7 @@
   import { playSound, stopAll } from "$lib/audio";
   import { fileName, library, type ImportSummary } from "$lib/library.svelte";
   import { playback } from "$lib/playback.svelte";
+  import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
@@ -93,6 +94,7 @@
             {sound}
             selected={library.selectedId === sound.id}
             playing={playback.latestFor(sound.id)}
+            hotkeyBroken={library.failureFor(sound.hotkey) !== null}
             onplay={() => play(sound.id)}
           />
         {/each}
@@ -111,6 +113,14 @@
 
   <footer>
     <OutputSettings onerror={(message) => (notice = message)} />
+    <div class="stop-all-hotkey">
+      <span>Stop all</span>
+      <HotkeyRecorder
+        hotkey={library.stopAllHotkey}
+        failure={library.failureFor(library.stopAllHotkey)}
+        onsave={(hotkey) => library.setStopAllHotkey(hotkey)}
+      />
+    </div>
     <ThemeSwitcher />
   </footer>
 
@@ -142,6 +152,14 @@
 
   footer {
     border-top: 1px solid var(--border);
+  }
+
+  .stop-all-hotkey {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--muted);
   }
 
   h1 {

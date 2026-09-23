@@ -1,5 +1,6 @@
 <script lang="ts">
   import { library, type Sound } from "$lib/library.svelte";
+  import HotkeyRecorder from "./HotkeyRecorder.svelte";
 
   let { sound, onerror }: { sound: Sound; onerror: (message: string) => void } = $props();
 
@@ -58,6 +59,14 @@
     />
   </label>
 
+  <div class="hotkey">
+    <HotkeyRecorder
+      hotkey={sound.hotkey}
+      failure={library.failureFor(sound.hotkey)}
+      onsave={(hotkey) => library.setHotkey(sound.id, hotkey)}
+    />
+  </div>
+
   <button
     aria-pressed={sound.favorite}
     onclick={() => attempt(() => library.setFavorite(sound.id, !sound.favorite))}
@@ -97,6 +106,13 @@
     gap: var(--space-1);
     flex: 1 1 160px;
     color: var(--muted);
+  }
+
+  .hotkey {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
   }
 
   input[type="range"] {
