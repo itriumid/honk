@@ -9,9 +9,12 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::window::{Effect, EffectState, EffectsBuilder};
 use tauri::{
-    AppHandle, LogicalPosition, Manager, Rect, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    WindowEvent,
+    AppHandle, Emitter, LogicalPosition, Manager, Rect, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
 };
+
+#[cfg(not(target_os = "macos"))]
+use tauri::WindowEvent;
 
 pub const LABEL: &str = "popover";
 const WIDTH: f64 = 320.0;
@@ -53,20 +56,93 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .visible(false)
         .build()?;
 
-    let hide_on_blur = window.clone();
     let app_handle = app.clone();
+    let hide_on_blur = move || {
+        if app_handle
+            .get_webview_window(LABEL)
+            .is_some_and(|window| window.is_visible().unwrap_or(false))
+        {
+            hide(&app_handle);
+            if let Ok(mut hidden) = app_handle.state::<PopoverState>().hidden_on_blur_at.lock() {
+                *hidden = Some(Instant::now());
+            }
+        }
+    };
+
+    #[cfg(target_os = "macos")]
+    panel::convert(&window, hide_on_blur)?;
+    #[cfg(not(target_os = "macos"))]
     window.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
-            if hide_on_blur.is_visible().unwrap_or(false) {
-                let _ = hide_on_blur.hide();
-                if let Ok(mut hidden) = app_handle.state::<PopoverState>().hidden_on_blur_at.lock()
-                {
-                    *hidden = Some(Instant::now());
-                }
-            }
+            hide_on_blur();
         }
     });
     Ok(())
+}
+
+/// On macOS the popover is an `NSPanel` that shows and takes keyboard focus *without*
+/// activating Honk. An ordinary window can't: activating Honk pulls the user off a full-screen
+/// app's Space, and macOS won't put a background app's ordinary window on that Space at all.
+#[cfg(target_os = "macos")]
+#[allow(
+    clippy::unused_unit,
+    reason = "tauri_panel!'s panel_event! syntax requires an explicit `-> ()` on every event"
+)]
+mod panel {
+    use tauri::WebviewWindow;
+    use tauri_nspanel::{
+        tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt,
+    };
+
+    tauri_panel! {
+        panel!(PopoverPanel {
+            config: {
+                can_become_key_window: true,
+                is_floating_panel: true
+            }
+        })
+
+        panel_event!(PopoverPanelEvents {
+            window_did_resign_key(notification: &NSNotification) -> ()
+        })
+    }
+
+    /// Replaces the window's delegate, so Tauri's own focus events stop for this window —
+    /// losing focus is reported through `on_blur` instead.
+    pub fn convert(window: &WebviewWindow, on_blur: impl Fn() + 'static) -> tauri::Result<()> {
+        let panel = window.to_panel::<PopoverPanel>()?;
+        panel
+            .set_style_mask(StyleMask::empty().nonactivating_panel().into())
+            .map_err(|error| {
+                tauri::Error::Io(std::io::Error::other(format!(
+                    "could not make the popover a non-activating panel: {error:?}"
+                )))
+            })?;
+        panel.set_collection_behavior(
+            CollectionBehavior::new()
+                .can_join_all_spaces()
+                .full_screen_auxiliary()
+                .into(),
+        );
+        panel.set_level(PanelLevel::PopUpMenu.value());
+
+        let events = PopoverPanelEvents::new();
+        events.window_did_resign_key(move |_| on_blur());
+        panel.set_event_handler(Some(events.as_ref()));
+        Ok(())
+    }
+
+    pub fn show(app: &tauri::AppHandle) {
+        if let Ok(panel) = app.get_webview_panel(super::LABEL) {
+            panel.show_and_make_key();
+        }
+    }
+
+    pub fn hide(app: &tauri::AppHandle) {
+        if let Ok(panel) = app.get_webview_panel(super::LABEL) {
+            panel.hide();
+        }
+    }
 }
 
 pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -122,7 +198,7 @@ pub fn toggle(app: &AppHandle) {
         return;
     };
     if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
+        hide(app);
         return;
     }
     let anchor = app
@@ -134,14 +210,29 @@ pub fn toggle(app: &AppHandle) {
     if let Some(position) = position_for(&window, anchor) {
         let _ = window.set_position(position);
     }
-    let _ = window.show();
-    let _ = window.set_focus();
+    #[cfg(target_os = "macos")]
+    panel::show(app);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    // Focus events don't reach the popover page on macOS (see `panel::convert`), so it's told
+    // directly — to refresh and focus the search field.
+    let _ = app.emit_to(LABEL, "popover-shown", ());
+}
+
+pub fn hide(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    panel::hide(app);
+    #[cfg(not(target_os = "macos"))]
+    if let Some(window) = app.get_webview_window(LABEL) {
+        let _ = window.hide();
+    }
 }
 
 pub fn show_main_window(app: &AppHandle) {
-    if let Some(popover) = app.get_webview_window(LABEL) {
-        let _ = popover.hide();
-    }
+    hide(app);
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.unminimize();
         let _ = main.show();

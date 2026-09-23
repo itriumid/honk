@@ -7,11 +7,20 @@ mod popover;
 
 use tauri::{Emitter, Manager};
 
+/// The panel plugin on macOS; an empty plugin elsewhere, so the builder chain stays the same.
+fn panel_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    #[cfg(target_os = "macos")]
+    return tauri_nspanel::init();
+    #[cfg(not(target_os = "macos"))]
+    return tauri::plugin::Builder::new("nspanel").build();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(panel_plugin())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(hotkeys::handle)

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::audio_engine::{AudioEngine, SoundData};
 use crate::hotkeys;
@@ -217,11 +217,8 @@ pub async fn show_main_window(app: AppHandle) {
 }
 
 #[tauri::command]
-pub async fn hide_popover(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(popover::LABEL) {
-        window.hide().map_err(|error| error.to_string())?;
-    }
-    Ok(())
+pub async fn hide_popover(app: AppHandle) {
+    popover::hide(&app);
 }
 
 /// Saved hotkeys that aren't working because the system refused them, with why.

@@ -5,7 +5,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { listen } from "@tauri-apps/api/event";
   import { playSound, stopAll } from "$lib/audio";
   import { library, type Sound } from "$lib/library.svelte";
   import { playback } from "$lib/playback.svelte";
@@ -50,17 +50,17 @@
     document.documentElement.classList.add("popover");
     attempt(() => library.refresh());
     const stopFollowingPlayback = playback.follow();
-    // The window is created once and shown and hidden, so refresh each time it opens —
-    // the main window may have changed the library meanwhile.
-    const stopWatchingFocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused) return;
+    // The window is created once and shown and hidden, so refresh each time it opens — the main
+    // window may have changed the library meanwhile. Rust announces each opening: on macOS the
+    // popover is a panel, which doesn't get the usual focus events.
+    const stopWatchingOpens = listen("popover-shown", () => {
       query = "";
       search?.focus();
       attempt(() => library.refresh());
     });
     return () => {
       stopFollowingPlayback();
-      stopWatchingFocus.then((unlisten) => unlisten());
+      stopWatchingOpens.then((unlisten) => unlisten());
     };
   });
 </script>
