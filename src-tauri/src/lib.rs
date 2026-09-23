@@ -3,7 +3,7 @@ mod commands;
 mod library;
 mod output_devices;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,9 +13,13 @@ pub fn run() {
         .setup(|app| {
             let data_directory = app.path().app_data_dir()?;
             app.manage(library::Library::open(&data_directory)?);
+
+            let handle = app.handle().clone();
+            app.manage(audio_engine::AudioEngine::start(move |event| {
+                let _ = handle.emit("playback", event);
+            }));
             Ok(())
         })
-        .manage(audio_engine::AudioEngine::start())
         .manage(commands::SoundCache::default())
         .invoke_handler(tauri::generate_handler![
             commands::list_output_devices,

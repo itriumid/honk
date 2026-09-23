@@ -74,7 +74,8 @@ pub async fn play_sound(
     id: i64,
 ) -> Result<(), String> {
     let volume = library.get(id)?.volume;
-    engine.play(cache.load(&library, id)?, volume)
+    engine.play(id, cache.load(&library, id)?, volume)?;
+    Ok(())
 }
 
 #[tauri::command]
