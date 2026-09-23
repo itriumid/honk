@@ -68,6 +68,9 @@ pub enum AppShortcut {
     TogglePopover,
 }
 
+/// The `settings` key for whether Honk shows in the Dock (macOS). Absent means yes.
+const SHOW_IN_DOCK: &str = "show_in_dock";
+
 impl AppShortcut {
     pub const ALL: [AppShortcut; 2] = [AppShortcut::StopAll, AppShortcut::TogglePopover];
 
@@ -288,6 +291,22 @@ impl Library {
                     .map_err(database_error)?;
             }
         }
+        Ok(())
+    }
+
+    pub fn show_in_dock(&self) -> Result<bool, String> {
+        let connection = self.connection()?;
+        Ok(read_setting(&connection, SHOW_IN_DOCK)?.as_deref() != Some("false"))
+    }
+
+    pub fn set_show_in_dock(&self, show: bool) -> Result<(), String> {
+        self.connection()?
+            .execute(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![SHOW_IN_DOCK, show.to_string()],
+            )
+            .map_err(database_error)?;
         Ok(())
     }
 
@@ -658,6 +677,19 @@ mod tests {
             library.app_hotkey(popover).unwrap().as_deref(),
             Some("alt+Space")
         );
+    }
+
+    #[test]
+    fn showing_in_the_dock_defaults_to_yes_and_persists() {
+        let directory = scratch_directory();
+        let library = Library::open(&directory).unwrap();
+        assert!(library.show_in_dock().unwrap());
+
+        library.set_show_in_dock(false).unwrap();
+        assert!(!Library::open(&directory).unwrap().show_in_dock().unwrap());
+
+        library.set_show_in_dock(true).unwrap();
+        assert!(library.show_in_dock().unwrap());
     }
 
     #[test]
