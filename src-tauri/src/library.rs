@@ -20,6 +20,8 @@ pub struct Sound {
     /// Linear, 0 to 1.
     pub volume: f32,
     pub favorite: bool,
+    /// Canonical global-shortcut string, e.g. `alt+Digit1`. See `hotkeys::normalize`.
+    pub hotkey: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -38,7 +40,8 @@ pub struct Library {
 
 /// Each entry upgrades the schema by one version; `PRAGMA user_version` records how many ran.
 /// Never edit a released migration — append a new one.
-const MIGRATIONS: &[&str] = &["CREATE TABLE sounds (
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE sounds (
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         content_hash TEXT NOT NULL UNIQUE,
@@ -47,7 +50,17 @@ const MIGRATIONS: &[&str] = &["CREATE TABLE sounds (
         favorite INTEGER NOT NULL DEFAULT 0,
         position INTEGER NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );"];
+    );",
+    "ALTER TABLE sounds ADD COLUMN hotkey TEXT;
+     CREATE UNIQUE INDEX sounds_hotkey ON sounds (hotkey) WHERE hotkey IS NOT NULL;
+     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+];
+
+/// Every query that builds a `Sound` selects these, in this order — see `sound_from_row`.
+const SOUND_COLUMNS: &str = "id, name, volume, favorite, hotkey";
+
+/// The `settings` key for the global shortcut that stops every sound.
+const STOP_ALL_HOTKEY: &str = "stop_all_hotkey";
 
 impl Library {
     /// Opens (or creates) the library under `directory`: `library.sqlite3` plus a `sounds/`
@@ -76,7 +89,9 @@ impl Library {
     pub fn list(&self) -> Result<Vec<Sound>, String> {
         let connection = self.connection()?;
         let mut statement = connection
-            .prepare("SELECT id, name, volume, favorite FROM sounds ORDER BY position")
+            .prepare(&format!(
+                "SELECT {SOUND_COLUMNS} FROM sounds ORDER BY position"
+            ))
             .map_err(database_error)?;
         let sounds = statement
             .query_map([], sound_from_row)
@@ -138,9 +153,11 @@ impl Library {
 
         let inserted = connection
             .query_row(
-                "INSERT INTO sounds (name, content_hash, file_name, position)
-                 VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM sounds))
-                 RETURNING id, name, volume, favorite",
+                &format!(
+                    "INSERT INTO sounds (name, content_hash, file_name, position)
+                     VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM sounds))
+                     RETURNING {SOUND_COLUMNS}"
+                ),
                 params![name, content_hash, file_name],
                 sound_from_row,
             )
@@ -200,6 +217,71 @@ impl Library {
         }
     }
 
+    /// Assigns `hotkey` (already normalized) to a sound, or clears it with `None`. Refuses a
+    /// hotkey another pad or the stop-all shortcut already uses, naming which.
+    pub fn set_hotkey(&self, id: i64, hotkey: Option<&str>) -> Result<Sound, String> {
+        if let Some(hotkey) = hotkey {
+            let connection = self.connection()?;
+            if let Some(owner) = connection
+                .query_row(
+                    "SELECT name FROM sounds WHERE hotkey = ?1 AND id != ?2",
+                    params![hotkey, id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(database_error)?
+            {
+                return Err(format!(
+                    "that shortcut is already used by \u{201c}{owner}\u{201d}"
+                ));
+            }
+            if read_setting(&connection, STOP_ALL_HOTKEY)?.as_deref() == Some(hotkey) {
+                return Err("that shortcut is already used by Stop all".to_string());
+            }
+        }
+        self.update(id, "UPDATE sounds SET hotkey = ?2 WHERE id = ?1", hotkey)
+    }
+
+    pub fn stop_all_hotkey(&self) -> Result<Option<String>, String> {
+        let connection = self.connection()?;
+        read_setting(&connection, STOP_ALL_HOTKEY)
+    }
+
+    /// Sets or clears the stop-all shortcut, refusing one a pad already uses.
+    pub fn set_stop_all_hotkey(&self, hotkey: Option<&str>) -> Result<(), String> {
+        let connection = self.connection()?;
+        match hotkey {
+            Some(hotkey) => {
+                if let Some(owner) = connection
+                    .query_row(
+                        "SELECT name FROM sounds WHERE hotkey = ?1",
+                        [hotkey],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .map_err(database_error)?
+                {
+                    return Err(format!(
+                        "that shortcut is already used by \u{201c}{owner}\u{201d}"
+                    ));
+                }
+                connection
+                    .execute(
+                        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                        params![STOP_ALL_HOTKEY, hotkey],
+                    )
+                    .map_err(database_error)?;
+            }
+            None => {
+                connection
+                    .execute("DELETE FROM settings WHERE key = ?1", [STOP_ALL_HOTKEY])
+                    .map_err(database_error)?;
+            }
+        }
+        Ok(())
+    }
+
     fn update(
         &self,
         id: i64,
@@ -249,10 +331,19 @@ fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn read_setting(connection: &Connection, key: &str) -> Result<Option<String>, String> {
+    connection
+        .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+            row.get(0)
+        })
+        .optional()
+        .map_err(database_error)
+}
+
 fn find_by_id(connection: &Connection, id: i64) -> Result<Option<Sound>, String> {
     connection
         .query_row(
-            "SELECT id, name, volume, favorite FROM sounds WHERE id = ?1",
+            &format!("SELECT {SOUND_COLUMNS} FROM sounds WHERE id = ?1"),
             [id],
             sound_from_row,
         )
@@ -263,7 +354,7 @@ fn find_by_id(connection: &Connection, id: i64) -> Result<Option<Sound>, String>
 fn find_by_hash(connection: &Connection, content_hash: &str) -> Result<Option<Sound>, String> {
     connection
         .query_row(
-            "SELECT id, name, volume, favorite FROM sounds WHERE content_hash = ?1",
+            &format!("SELECT {SOUND_COLUMNS} FROM sounds WHERE content_hash = ?1"),
             [content_hash],
             sound_from_row,
         )
@@ -277,6 +368,7 @@ fn sound_from_row(row: &Row) -> rusqlite::Result<Sound> {
         name: row.get(1)?,
         volume: row.get(2)?,
         favorite: row.get(3)?,
+        hotkey: row.get(4)?,
     })
 }
 
@@ -439,6 +531,86 @@ mod tests {
         assert!(library.set_favorite(id, true).unwrap().favorite);
         assert_eq!(library.get(id).unwrap().name, "Air horn");
         assert!(library.get(id + 1).is_err());
+    }
+
+    #[test]
+    fn a_hotkey_is_saved_cleared_and_never_shared() {
+        let (library, _, paths) =
+            library_with_files(&[("horn.wav", wav(&[11])), ("drum.wav", wav(&[12]))]);
+        let results = library.import(paths);
+        let horn = results[0].sound.clone().unwrap().id;
+        let drum = results[1].sound.clone().unwrap().id;
+
+        assert_eq!(
+            library
+                .set_hotkey(horn, Some("alt+Digit1"))
+                .unwrap()
+                .hotkey
+                .as_deref(),
+            Some("alt+Digit1")
+        );
+        // Re-saving a pad's own hotkey isn't a conflict.
+        assert!(library.set_hotkey(horn, Some("alt+Digit1")).is_ok());
+
+        let error = library.set_hotkey(drum, Some("alt+Digit1")).unwrap_err();
+        assert!(
+            error.contains("horn"),
+            "should name the pad that owns it: {error}"
+        );
+
+        assert_eq!(library.set_hotkey(horn, None).unwrap().hotkey, None);
+        assert!(library.set_hotkey(drum, Some("alt+Digit1")).is_ok());
+    }
+
+    #[test]
+    fn stop_all_and_pads_never_share_a_hotkey() {
+        let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[13]))]);
+        let horn = library.import(paths)[0].sound.clone().unwrap().id;
+        assert_eq!(library.stop_all_hotkey().unwrap(), None);
+
+        library.set_stop_all_hotkey(Some("alt+Escape")).unwrap();
+        assert_eq!(
+            library.stop_all_hotkey().unwrap().as_deref(),
+            Some("alt+Escape")
+        );
+        assert!(library
+            .set_hotkey(horn, Some("alt+Escape"))
+            .unwrap_err()
+            .contains("Stop all"));
+
+        library.set_hotkey(horn, Some("alt+Digit2")).unwrap();
+        assert!(library
+            .set_stop_all_hotkey(Some("alt+Digit2"))
+            .unwrap_err()
+            .contains("horn"));
+
+        library.set_stop_all_hotkey(None).unwrap();
+        assert_eq!(library.stop_all_hotkey().unwrap(), None);
+    }
+
+    #[test]
+    fn a_version_one_library_upgrades_and_keeps_its_sounds() {
+        let directory = scratch_directory();
+        let library_directory = directory.join("library");
+        fs::create_dir_all(library_directory.join("sounds")).unwrap();
+        {
+            // Exactly what a library created before hotkeys existed looks like.
+            let connection = Connection::open(library_directory.join("library.sqlite3")).unwrap();
+            connection.execute_batch(MIGRATIONS[0]).unwrap();
+            connection.pragma_update(None, "user_version", 1).unwrap();
+            connection
+                .execute(
+                    "INSERT INTO sounds (name, content_hash, file_name, position)
+                     VALUES ('old', 'abc', 'abc.wav', 0)",
+                    [],
+                )
+                .unwrap();
+        }
+        let library = Library::open(&library_directory).unwrap();
+        let sounds = library.list().unwrap();
+        assert_eq!(sounds.len(), 1);
+        assert_eq!(sounds[0].name, "old");
+        assert_eq!(sounds[0].hotkey, None);
     }
 
     #[test]
