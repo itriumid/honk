@@ -9,7 +9,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::window::{Effect, EffectState, EffectsBuilder};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, Rect, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, LogicalPosition, Manager, Rect, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     WindowEvent,
 };
 
@@ -149,29 +149,70 @@ pub fn show_main_window(app: &AppHandle) {
     }
 }
 
-/// Where the popover goes, in physical pixels, on whichever display holds the tray icon — each
-/// display has its own bounds and scale.
-fn position_for(window: &WebviewWindow, anchor: Option<Rect>) -> Option<PhysicalPosition<i32>> {
-    let primary = window.primary_monitor().ok().flatten()?;
-    let monitor = anchor
-        .and_then(|rect| {
-            let point = rect.position.to_physical::<f64>(primary.scale_factor());
-            window.monitor_from_point(point.x, point.y).ok().flatten()
+/// Where the popover goes, in macOS's global points. Everything is worked out in points
+/// because displays can differ in scale, and a physical position would be converted using the
+/// scale of whichever display the popover happens to be on now — not the one it's going to.
+fn position_for(window: &WebviewWindow, anchor: Option<Rect>) -> Option<LogicalPosition<f64>> {
+    let monitors = window.available_monitors().ok()?;
+    let displays: Vec<Display> = monitors
+        .iter()
+        .map(|monitor| {
+            let scale = monitor.scale_factor();
+            Display {
+                screen: Screen {
+                    left: monitor.position().x as f64 / scale,
+                    top: monitor.position().y as f64 / scale,
+                    width: monitor.size().width as f64 / scale,
+                },
+                height: monitor.size().height as f64 / scale,
+                scale,
+            }
         })
-        .unwrap_or(primary);
-    let scale = monitor.scale_factor();
-    let screen = Screen {
-        left: monitor.position().x as f64,
-        top: monitor.position().y as f64,
-        width: monitor.size().width as f64,
-    };
+        .collect();
+    let primary = window.primary_monitor().ok().flatten()?;
+    let primary_index = monitors
+        .iter()
+        .position(|monitor| monitor.position() == primary.position())
+        .unwrap_or(0);
+
     let icon = anchor.map(|rect| {
-        let position = rect.position.to_physical::<f64>(scale);
-        let size = rect.size.to_physical::<f64>(scale);
+        // The tray reports points multiplied by its own display's scale.
+        let position = rect.position.to_physical::<f64>(1.0);
+        let size = rect.size.to_physical::<f64>(1.0);
         (position.x, position.y, size.width, size.height)
     });
-    let (x, y) = place(icon, screen, scale);
-    Some(PhysicalPosition::new(x.round() as i32, y.round() as i32))
+    let index = icon
+        .and_then(|icon| display_holding(icon, &displays))
+        .unwrap_or(primary_index);
+    let display = displays.get(index)?;
+    let icon_in_points = icon.map(|(x, y, width, height)| {
+        let scale = display.scale;
+        (x / scale, y / scale, width / scale, height / scale)
+    });
+    let (x, y) = place(icon_in_points, display.screen, 1.0);
+    Some(LogicalPosition::new(x, y))
+}
+
+/// A display in global points, with the scale it reports physical pixels at.
+#[derive(Clone, Copy)]
+struct Display {
+    screen: Screen,
+    height: f64,
+    scale: f64,
+}
+
+/// Which display the tray icon is on. Its rect is in points times *its own* display's scale,
+/// so each display is tested at its own scale: the right one is where the result lands inside.
+fn display_holding(icon: (f64, f64, f64, f64), displays: &[Display]) -> Option<usize> {
+    let (x, y, width, height) = icon;
+    displays.iter().position(|display| {
+        let centre_x = (x + width / 2.0) / display.scale;
+        let centre_y = (y + height / 2.0) / display.scale;
+        centre_x >= display.screen.left
+            && centre_x < display.screen.left + display.screen.width
+            && centre_y >= display.screen.top
+            && centre_y < display.screen.top + display.height
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -230,6 +271,49 @@ mod tests {
         let (x, y) = place(None, RETINA, 2.0);
         assert_eq!(x, 2880.0 - 640.0 - 32.0);
         assert_eq!(y, 48.0 + 12.0);
+    }
+
+    /// A 2x built-in display at the origin, and a 1x external one to its left, in points.
+    fn two_displays() -> [Display; 2] {
+        [
+            Display {
+                screen: Screen {
+                    left: 0.0,
+                    top: 0.0,
+                    width: 1440.0,
+                },
+                height: 900.0,
+                scale: 2.0,
+            },
+            Display {
+                screen: Screen {
+                    left: -1920.0,
+                    top: 0.0,
+                    width: 1920.0,
+                },
+                height: 1080.0,
+                scale: 1.0,
+            },
+        ]
+    }
+
+    #[test]
+    fn finds_the_external_display_when_its_menu_bar_was_clicked() {
+        // An icon at x = -300 points on the 1x display arrives as -300 physical.
+        assert_eq!(
+            display_holding((-300.0, 0.0, 22.0, 24.0), &two_displays()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn finds_the_built_in_display_despite_its_doubled_coordinates() {
+        // An icon at x = 1200 points on the 2x display arrives as 2400 physical — outside the
+        // display if taken as points, which is the bug this guards against.
+        assert_eq!(
+            display_holding((2400.0, 0.0, 44.0, 48.0), &two_displays()),
+            Some(0)
+        );
     }
 
     #[test]
