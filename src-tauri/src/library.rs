@@ -1,0 +1,478 @@
+//! The sound library: imported audio files copied into app storage, and their metadata in SQLite.
+//!
+//! Stored files are named after the SHA-256 of their contents, so importing the same audio twice
+//! stores it once, and moving or deleting the original never breaks a pad.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use rusqlite::{params, Connection, OptionalExtension, Row};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+
+use crate::audio_engine::{self, SoundData};
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Sound {
+    pub id: i64,
+    pub name: String,
+    /// Linear, 0 to 1.
+    pub volume: f32,
+    pub favorite: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportResult {
+    pub path: PathBuf,
+    /// The imported sound, or the existing one when the file was already in the library.
+    pub sound: Option<Sound>,
+    pub duplicate: bool,
+    pub error: Option<String>,
+}
+
+pub struct Library {
+    connection: Mutex<Connection>,
+    sounds_directory: PathBuf,
+}
+
+/// Each entry upgrades the schema by one version; `PRAGMA user_version` records how many ran.
+/// Never edit a released migration — append a new one.
+const MIGRATIONS: &[&str] = &["CREATE TABLE sounds (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        content_hash TEXT NOT NULL UNIQUE,
+        file_name TEXT NOT NULL,
+        volume REAL NOT NULL DEFAULT 1.0,
+        favorite INTEGER NOT NULL DEFAULT 0,
+        position INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );"];
+
+impl Library {
+    /// Opens (or creates) the library under `directory`: `library.sqlite3` plus a `sounds/`
+    /// folder for the stored files.
+    pub fn open(directory: &Path) -> Result<Self, String> {
+        let sounds_directory = directory.join("sounds");
+        fs::create_dir_all(&sounds_directory)
+            .map_err(|error| format!("could not create {}: {error}", sounds_directory.display()))?;
+        let connection = Connection::open(directory.join("library.sqlite3"))
+            .map_err(|error| format!("could not open the library database: {error}"))?;
+        Self::from_connection(connection, sounds_directory)
+    }
+
+    fn from_connection(
+        mut connection: Connection,
+        sounds_directory: PathBuf,
+    ) -> Result<Self, String> {
+        migrate(&mut connection)
+            .map_err(|error| format!("could not migrate the library: {error}"))?;
+        Ok(Self {
+            connection: Mutex::new(connection),
+            sounds_directory,
+        })
+    }
+
+    pub fn list(&self) -> Result<Vec<Sound>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare("SELECT id, name, volume, favorite FROM sounds ORDER BY position")
+            .map_err(database_error)?;
+        let sounds = statement
+            .query_map([], sound_from_row)
+            .map_err(database_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+        Ok(sounds)
+    }
+
+    /// Imports each path independently — one bad file doesn't stop the rest.
+    pub fn import(&self, paths: Vec<PathBuf>) -> Vec<ImportResult> {
+        paths
+            .into_iter()
+            .map(|path| match self.import_one(&path) {
+                Ok((sound, duplicate)) => ImportResult {
+                    path,
+                    sound: Some(sound),
+                    duplicate,
+                    error: None,
+                },
+                Err(error) => ImportResult {
+                    path,
+                    sound: None,
+                    duplicate: false,
+                    error: Some(error),
+                },
+            })
+            .collect()
+    }
+
+    fn import_one(&self, path: &Path) -> Result<(Sound, bool), String> {
+        let bytes = fs::read(path).map_err(|error| format!("could not read the file: {error}"))?;
+        let content_hash = hash(&bytes);
+
+        let connection = self.connection()?;
+        if let Some(existing) = find_by_hash(&connection, &content_hash)? {
+            return Ok((existing, true));
+        }
+
+        // Reject anything that won't play before it takes up space in the library.
+        let sound_data: SoundData = bytes.into();
+        audio_engine::decode(&sound_data)?;
+
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_lowercase)
+            .unwrap_or_else(|| "audio".to_string());
+        let file_name = format!("{content_hash}.{extension}");
+        let stored_path = self.sounds_directory.join(&file_name);
+        fs::write(&stored_path, &sound_data)
+            .map_err(|error| format!("could not store the file: {error}"))?;
+
+        let name = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("Untitled")
+            .to_string();
+
+        let inserted = connection
+            .query_row(
+                "INSERT INTO sounds (name, content_hash, file_name, position)
+                 VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM sounds))
+                 RETURNING id, name, volume, favorite",
+                params![name, content_hash, file_name],
+                sound_from_row,
+            )
+            .map_err(database_error);
+
+        if inserted.is_err() {
+            // Don't leave an orphaned file behind a failed insert.
+            let _ = fs::remove_file(&stored_path);
+        }
+        Ok((inserted?, false))
+    }
+
+    /// The stored file's contents, for playback.
+    pub fn load(&self, id: i64) -> Result<SoundData, String> {
+        let file_name = self.file_name(id)?;
+        let path = self.sounds_directory.join(file_name);
+        fs::read(&path)
+            .map(Into::into)
+            .map_err(|error| format!("could not read the stored sound: {error}"))
+    }
+
+    pub fn rename(&self, id: i64, name: &str) -> Result<Sound, String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("a sound needs a name".to_string());
+        }
+        self.update(id, "UPDATE sounds SET name = ?2 WHERE id = ?1", name)
+    }
+
+    pub fn set_volume(&self, id: i64, volume: f32) -> Result<Sound, String> {
+        self.update(
+            id,
+            "UPDATE sounds SET volume = ?2 WHERE id = ?1",
+            volume.clamp(0.0, 1.0),
+        )
+    }
+
+    pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<Sound, String> {
+        self.update(
+            id,
+            "UPDATE sounds SET favorite = ?2 WHERE id = ?1",
+            favorite,
+        )
+    }
+
+    /// Removes the sound and its stored file.
+    pub fn delete(&self, id: i64) -> Result<(), String> {
+        let file_name = self.file_name(id)?;
+        self.connection()?
+            .execute("DELETE FROM sounds WHERE id = ?1", [id])
+            .map_err(database_error)?;
+        match fs::remove_file(self.sounds_directory.join(file_name)) {
+            Ok(()) => Ok(()),
+            // Already gone is the outcome we wanted.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("removed the sound, but not its file: {error}")),
+        }
+    }
+
+    fn update(
+        &self,
+        id: i64,
+        statement: &str,
+        value: impl rusqlite::ToSql,
+    ) -> Result<Sound, String> {
+        let connection = self.connection()?;
+        let changed = connection
+            .execute(statement, params![id, value])
+            .map_err(database_error)?;
+        if changed == 0 {
+            return Err(not_found(id));
+        }
+        find_by_id(&connection, id)?.ok_or_else(|| not_found(id))
+    }
+
+    pub fn get(&self, id: i64) -> Result<Sound, String> {
+        let connection = self.connection()?;
+        find_by_id(&connection, id)?.ok_or_else(|| not_found(id))
+    }
+
+    fn file_name(&self, id: i64) -> Result<String, String> {
+        self.connection()?
+            .query_row("SELECT file_name FROM sounds WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(database_error)?
+            .ok_or_else(|| not_found(id))
+    }
+
+    fn connection(&self) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
+        self.connection
+            .lock()
+            .map_err(|_| "the library database lock is poisoned".to_string())
+    }
+}
+
+fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
+    let applied: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    for (version, migration) in (1..).zip(MIGRATIONS).skip(applied.max(0) as usize) {
+        let transaction = connection.transaction()?;
+        transaction.execute_batch(migration)?;
+        transaction.pragma_update(None, "user_version", version as i64)?;
+        transaction.commit()?;
+    }
+    Ok(())
+}
+
+fn find_by_id(connection: &Connection, id: i64) -> Result<Option<Sound>, String> {
+    connection
+        .query_row(
+            "SELECT id, name, volume, favorite FROM sounds WHERE id = ?1",
+            [id],
+            sound_from_row,
+        )
+        .optional()
+        .map_err(database_error)
+}
+
+fn find_by_hash(connection: &Connection, content_hash: &str) -> Result<Option<Sound>, String> {
+    connection
+        .query_row(
+            "SELECT id, name, volume, favorite FROM sounds WHERE content_hash = ?1",
+            [content_hash],
+            sound_from_row,
+        )
+        .optional()
+        .map_err(database_error)
+}
+
+fn sound_from_row(row: &Row) -> rusqlite::Result<Sound> {
+    Ok(Sound {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        volume: row.get(2)?,
+        favorite: row.get(3)?,
+    })
+}
+
+fn hash(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn database_error(error: rusqlite::Error) -> String {
+    format!("library database error: {error}")
+}
+
+fn not_found(id: i64) -> String {
+    format!("sound {id} is not in the library")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A fresh directory per test, so tests can run in parallel without sharing files.
+    fn scratch_directory() -> PathBuf {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let directory = std::env::temp_dir().join(format!(
+            "honk-library-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    /// A minimal 16-bit mono PCM WAV; different `samples` give different content hashes.
+    fn wav(samples: &[i16]) -> Vec<u8> {
+        let data_length = (samples.len() * 2) as u32;
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data_length).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&44_100u32.to_le_bytes());
+        bytes.extend_from_slice(&88_200u32.to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_length.to_le_bytes());
+        for sample in samples {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn library_with_files(files: &[(&str, Vec<u8>)]) -> (Library, PathBuf, Vec<PathBuf>) {
+        let directory = scratch_directory();
+        let library = Library::open(&directory.join("library")).unwrap();
+        let paths = files
+            .iter()
+            .map(|(name, bytes)| {
+                let path = directory.join(name);
+                fs::write(&path, bytes).unwrap();
+                path
+            })
+            .collect();
+        (library, directory, paths)
+    }
+
+    fn stored_files(directory: &Path) -> usize {
+        fs::read_dir(directory.join("library/sounds"))
+            .unwrap()
+            .count()
+    }
+
+    #[test]
+    fn imports_a_sound_named_after_its_file_and_stored_by_hash() {
+        let (library, directory, paths) = library_with_files(&[("Airhorn.WAV", wav(&[1, 2, 3]))]);
+        let results = library.import(paths);
+
+        let sound = results[0].sound.clone().expect("import should succeed");
+        assert_eq!(sound.name, "Airhorn");
+        assert_eq!(sound.volume, 1.0);
+        assert!(!sound.favorite);
+        assert!(!results[0].duplicate);
+
+        let stored = fs::read_dir(directory.join("library/sounds"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .file_name();
+        assert_eq!(
+            stored.to_str().unwrap(),
+            format!("{}.wav", hash(&wav(&[1, 2, 3])))
+        );
+    }
+
+    #[test]
+    fn the_same_audio_twice_is_stored_once_even_under_another_name() {
+        let (library, directory, paths) = library_with_files(&[
+            ("first.wav", wav(&[1, 2, 3])),
+            ("renamed copy.wav", wav(&[1, 2, 3])),
+        ]);
+        let results = library.import(paths);
+
+        assert!(!results[0].duplicate);
+        assert!(results[1].duplicate);
+        assert_eq!(results[0].sound, results[1].sound);
+        assert_eq!(library.list().unwrap().len(), 1);
+        assert_eq!(stored_files(&directory), 1);
+    }
+
+    #[test]
+    fn a_file_that_is_not_audio_is_rejected_without_storing_anything() {
+        let (library, directory, paths) = library_with_files(&[
+            ("notes.mp3", b"not audio at all".to_vec()),
+            ("real.wav", wav(&[4, 5, 6])),
+        ]);
+        let results = library.import(paths);
+
+        assert!(results[0].error.is_some());
+        assert!(
+            results[1].sound.is_some(),
+            "one bad file must not stop the rest"
+        );
+        assert_eq!(library.list().unwrap().len(), 1);
+        assert_eq!(stored_files(&directory), 1);
+    }
+
+    #[test]
+    fn sounds_list_in_import_order() {
+        let (library, _, paths) = library_with_files(&[
+            ("c.wav", wav(&[3])),
+            ("a.wav", wav(&[1])),
+            ("b.wav", wav(&[2])),
+        ]);
+        library.import(paths);
+        let names: Vec<_> = library
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|sound| sound.name)
+            .collect();
+        assert_eq!(names, ["c", "a", "b"]);
+    }
+
+    #[test]
+    fn edits_are_saved_and_clamped() {
+        let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[7]))]);
+        let id = library.import(paths)[0].sound.clone().unwrap().id;
+
+        assert_eq!(library.rename(id, "  Air horn  ").unwrap().name, "Air horn");
+        assert!(library.rename(id, "   ").is_err());
+        assert_eq!(library.set_volume(id, 1.7).unwrap().volume, 1.0);
+        assert_eq!(library.set_volume(id, 0.25).unwrap().volume, 0.25);
+        assert!(library.set_favorite(id, true).unwrap().favorite);
+        assert_eq!(library.get(id).unwrap().name, "Air horn");
+        assert!(library.get(id + 1).is_err());
+    }
+
+    #[test]
+    fn deleting_removes_the_row_and_the_stored_file() {
+        let (library, directory, paths) = library_with_files(&[("horn.wav", wav(&[8]))]);
+        let id = library.import(paths)[0].sound.clone().unwrap().id;
+
+        library.delete(id).unwrap();
+        assert!(library.list().unwrap().is_empty());
+        assert_eq!(stored_files(&directory), 0);
+        assert!(library.load(id).is_err());
+        assert!(library.delete(id).is_err());
+    }
+
+    #[test]
+    fn the_stored_copy_plays_after_the_original_is_gone() {
+        let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[9, 9]))]);
+        let id = library.import(paths.clone())[0].sound.clone().unwrap().id;
+        fs::remove_file(&paths[0]).unwrap();
+
+        let data = library.load(id).unwrap();
+        assert!(audio_engine::decode(&data).is_ok());
+    }
+
+    #[test]
+    fn reopening_keeps_the_library_and_does_not_rerun_migrations() {
+        let directory = scratch_directory();
+        let source = directory.join("horn.wav");
+        fs::write(&source, wav(&[10])).unwrap();
+        {
+            let library = Library::open(&directory.join("library")).unwrap();
+            library.import(vec![source]);
+        }
+        let reopened = Library::open(&directory.join("library")).unwrap();
+        assert_eq!(reopened.list().unwrap().len(), 1);
+    }
+}
