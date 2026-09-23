@@ -5,6 +5,7 @@
   import { playSound, stopAll } from "$lib/audio";
   import { fileName, library, type AppShortcut, type ImportSummary } from "$lib/library.svelte";
   import { playback } from "$lib/playback.svelte";
+  import DockSetting from "$lib/components/DockSetting.svelte";
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
@@ -128,6 +129,7 @@
         />
       </div>
     {/each}
+    <DockSetting onerror={(message) => (notice = message)} />
     <ThemeSwitcher />
   </footer>
 
