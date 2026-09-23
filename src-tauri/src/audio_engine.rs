@@ -1,13 +1,20 @@
 //! Owns every output stream on one dedicated thread. Streams can't be moved across threads on
 //! every platform, so nothing else touches them: callers send commands over a channel and wait
 //! for the reply.
+//!
+//! The engine also tracks what's playing and reports each playback's start and finish through
+//! the event callback given to [`AudioEngine::start`]. Every event comes from the engine thread,
+//! in order — including finishes detected on the audio thread, which only forwards them here.
 
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
-use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player};
+use rodio::source::EmptyCallback;
+use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
+use serde::Serialize;
 
 use crate::output_devices;
 
@@ -15,13 +22,32 @@ use crate::output_devices;
 /// decode per output device when playing to two at once.
 pub type SoundData = Arc<[u8]>;
 
-type Reply = mpsc::Sender<Result<(), String>>;
+/// Identifies one play of a sound, so overlapping plays of the same sound are told apart.
+pub type PlaybackId = u64;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlaybackEvent {
+    Started {
+        playback_id: PlaybackId,
+        sound_id: i64,
+        /// `None` when the file doesn't say, as with some MP3 streams.
+        duration_milliseconds: Option<u64>,
+    },
+    Finished {
+        playback_id: PlaybackId,
+        sound_id: i64,
+    },
+}
+
+type Reply<T = ()> = mpsc::Sender<Result<T, String>>;
 
 enum Command {
     Play {
+        sound_id: i64,
         sound: SoundData,
         volume: f32,
-        reply: Reply,
+        reply: Reply<PlaybackId>,
     },
     StopAll {
         reply: Reply,
@@ -31,6 +57,10 @@ enum Command {
         secondary: Option<String>,
         reply: Reply,
     },
+    /// Sent from the audio thread when a playback's primary output runs out.
+    Finished {
+        playback_id: PlaybackId,
+    },
 }
 
 pub struct AudioEngine {
@@ -38,19 +68,21 @@ pub struct AudioEngine {
 }
 
 impl AudioEngine {
-    pub fn start() -> Self {
+    pub fn start(events: impl Fn(PlaybackEvent) + Send + 'static) -> Self {
         let (commands, receiver) = mpsc::channel();
+        let finished = commands.clone();
         thread::Builder::new()
             .name("audio-engine".into())
-            .spawn(move || run(receiver))
+            .spawn(move || run(receiver, finished, events))
             .expect("failed to spawn the audio engine thread");
         Self { commands }
     }
 
     /// Plays `sound` on every configured output device, overlapping anything already playing.
     /// `volume` is linear: 0.0 is silent, 1.0 is the file's own level.
-    pub fn play(&self, sound: SoundData, volume: f32) -> Result<(), String> {
+    pub fn play(&self, sound_id: i64, sound: SoundData, volume: f32) -> Result<PlaybackId, String> {
         self.request(|reply| Command::Play {
+            sound_id,
             sound,
             volume,
             reply,
@@ -75,7 +107,7 @@ impl AudioEngine {
         })
     }
 
-    fn request(&self, command: impl FnOnce(Reply) -> Command) -> Result<(), String> {
+    fn request<T>(&self, command: impl FnOnce(Reply<T>) -> Command) -> Result<T, String> {
         let (reply, response) = mpsc::channel();
         self.commands
             .send(command(reply))
@@ -86,29 +118,70 @@ impl AudioEngine {
     }
 }
 
-#[derive(Default)]
-struct State {
+struct State<E> {
     /// Primary first, then the secondary if one is selected. Empty until first needed, so the
     /// app starts without claiming an audio device.
     sinks: Vec<MixerDeviceSink>,
     /// One per sound per device. Dropping a player stops it.
     players: Vec<Player>,
+    /// Sound id by playback, for everything started and not yet reported finished.
+    playing: HashMap<PlaybackId, i64>,
+    next_playback_id: PlaybackId,
+    events: E,
 }
 
-fn run(receiver: mpsc::Receiver<Command>) {
-    let mut state = State::default();
+impl<E: Fn(PlaybackEvent)> State<E> {
+    fn new(events: E) -> Self {
+        Self {
+            sinks: Vec::new(),
+            players: Vec::new(),
+            playing: HashMap::new(),
+            next_playback_id: 1,
+            events,
+        }
+    }
+
+    fn finish(&mut self, playback_id: PlaybackId) {
+        // Unknown ids are expected: a stop already reported this playback as finished.
+        if let Some(sound_id) = self.playing.remove(&playback_id) {
+            (self.events)(PlaybackEvent::Finished {
+                playback_id,
+                sound_id,
+            });
+        }
+    }
+
+    /// Stops every player. Their end-of-sound callbacks will never fire, so report each
+    /// playback as finished here.
+    fn stop_everything(&mut self) {
+        self.players.clear();
+        let mut stopped: Vec<_> = self.playing.keys().copied().collect();
+        stopped.sort_unstable();
+        for playback_id in stopped {
+            self.finish(playback_id);
+        }
+    }
+}
+
+fn run(
+    receiver: mpsc::Receiver<Command>,
+    finished: mpsc::Sender<Command>,
+    events: impl Fn(PlaybackEvent),
+) {
+    let mut state = State::new(events);
     for command in receiver {
         state.players.retain(|player| !player.empty());
         match command {
             Command::Play {
+                sound_id,
                 sound,
                 volume,
                 reply,
             } => {
-                let _ = reply.send(play(&mut state, sound, volume));
+                let _ = reply.send(play(&mut state, &finished, sound_id, sound, volume));
             }
             Command::StopAll { reply } => {
-                state.players.clear();
+                state.stop_everything();
                 let _ = reply.send(Ok(()));
             }
             Command::SetOutputDevices {
@@ -117,30 +190,55 @@ fn run(receiver: mpsc::Receiver<Command>) {
                 reply,
             } => {
                 let result = open_sinks(primary.as_deref(), secondary.as_deref()).map(|sinks| {
-                    state.players.clear();
+                    state.stop_everything();
                     state.sinks = sinks;
                 });
                 let _ = reply.send(result);
             }
+            Command::Finished { playback_id } => state.finish(playback_id),
         }
     }
 }
 
-fn play(state: &mut State, sound: SoundData, volume: f32) -> Result<(), String> {
+fn play<E: Fn(PlaybackEvent)>(
+    state: &mut State<E>,
+    finished: &mpsc::Sender<Command>,
+    sound_id: i64,
+    sound: SoundData,
+    volume: f32,
+) -> Result<PlaybackId, String> {
     // Decode once up front so a bad file fails before any device is opened.
-    decode(&sound)?;
+    let duration = decode(&sound)?.total_duration();
 
     if state.sinks.is_empty() {
         state.sinks = open_sinks(None, None)?;
     }
 
-    for sink in &state.sinks {
+    let playback_id = state.next_playback_id;
+    state.next_playback_id += 1;
+
+    for (index, sink) in state.sinks.iter().enumerate() {
         let player = Player::connect_new(sink.mixer());
         player.set_volume(volume.clamp(0.0, 1.0));
         player.append(decode(&sound)?);
+        // The primary output decides when a playback is over; the secondary plays the same
+        // sound on another clock and may end a few milliseconds apart.
+        if index == 0 {
+            let finished = finished.clone();
+            player.append(EmptyCallback::new(Box::new(move || {
+                let _ = finished.send(Command::Finished { playback_id });
+            })));
+        }
         state.players.push(player);
     }
-    Ok(())
+
+    state.playing.insert(playback_id, sound_id);
+    (state.events)(PlaybackEvent::Started {
+        playback_id,
+        sound_id,
+        duration_milliseconds: duration.map(|duration| duration.as_millis() as u64),
+    });
+    Ok(playback_id)
 }
 
 pub fn decode(sound: &SoundData) -> Result<Decoder<Cursor<SoundData>>, String> {
@@ -177,7 +275,8 @@ fn open_sink(device_id: Option<&str>) -> Result<MixerDeviceSink, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rodio::Source;
+    use std::sync::Mutex;
+    use std::time::Duration;
 
     /// A minimal 16-bit mono PCM WAV file, built by hand so the tests need no fixture files.
     fn wav(samples: &[i16], sample_rate: u32) -> SoundData {
@@ -201,12 +300,23 @@ mod tests {
         bytes.into()
     }
 
+    type Recorded = Arc<Mutex<Vec<PlaybackEvent>>>;
+
+    /// Collects every event a `State` emits.
+    fn recording_state() -> (State<impl Fn(PlaybackEvent)>, Recorded) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&events);
+        let state = State::new(move |event| sink.lock().unwrap().push(event));
+        (state, events)
+    }
+
     #[test]
-    fn decodes_a_wav_from_memory() {
-        let sound = wav(&[0, 1000, -1000, 0], 44_100);
+    fn decodes_a_wav_from_memory_with_its_duration() {
+        let sound = wav(&[0; 4410], 44_100);
         let decoder = decode(&sound).expect("valid WAV should decode");
         assert_eq!(decoder.sample_rate().get(), 44_100);
-        assert_eq!(decoder.count(), 4);
+        assert_eq!(decoder.total_duration(), Some(Duration::from_millis(100)));
+        assert_eq!(decoder.count(), 4410);
     }
 
     #[test]
@@ -223,10 +333,103 @@ mod tests {
     }
 
     #[test]
-    fn a_bad_file_fails_before_any_device_is_opened() {
-        let mut state = State::default();
+    fn a_bad_file_fails_before_any_device_is_opened_or_event_sent() {
+        let (mut state, events) = recording_state();
+        let (finished, _) = mpsc::channel();
         let sound: SoundData = b"definitely not a sound file".to_vec().into();
-        assert!(play(&mut state, sound, 1.0).is_err());
+        assert!(play(&mut state, &finished, 1, sound, 1.0).is_err());
         assert!(state.sinks.is_empty());
+        assert!(events.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_finish_is_reported_once_and_unknown_ids_are_ignored() {
+        let (mut state, events) = recording_state();
+        state.playing.insert(7, 42);
+
+        state.finish(7);
+        state.finish(7);
+        state.finish(99);
+
+        assert_eq!(
+            *events.lock().unwrap(),
+            [PlaybackEvent::Finished {
+                playback_id: 7,
+                sound_id: 42
+            }]
+        );
+    }
+
+    #[test]
+    fn stopping_reports_every_playback_finished_and_late_callbacks_add_nothing() {
+        let (mut state, events) = recording_state();
+        state.playing.insert(2, 20);
+        state.playing.insert(1, 10);
+
+        state.stop_everything();
+        // The audio thread may still deliver a finish for a player that was just dropped.
+        state.finish(1);
+
+        assert_eq!(
+            *events.lock().unwrap(),
+            [
+                PlaybackEvent::Finished {
+                    playback_id: 1,
+                    sound_id: 10
+                },
+                PlaybackEvent::Finished {
+                    playback_id: 2,
+                    sound_id: 20
+                },
+            ]
+        );
+        assert!(state.playing.is_empty());
+    }
+
+    #[test]
+    fn events_serialize_for_the_frontend() {
+        let started = serde_json::to_value(PlaybackEvent::Started {
+            playback_id: 3,
+            sound_id: 9,
+            duration_milliseconds: None,
+        })
+        .unwrap();
+        assert_eq!(
+            started,
+            serde_json::json!({
+                "kind": "started",
+                "playback_id": 3,
+                "sound_id": 9,
+                "duration_milliseconds": null
+            })
+        );
+    }
+
+    /// Plays a silent tenth of a second on the default device and waits for the finish event.
+    /// Needs real audio hardware, so it's opt-in: `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn a_real_playback_reports_started_then_finished() {
+        let (sender, receiver) = mpsc::channel();
+        let engine = AudioEngine::start(move |event| {
+            let _ = sender.send(event);
+        });
+        let playback_id = engine.play(5, wav(&[0; 4410], 44_100), 0.0).unwrap();
+
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            PlaybackEvent::Started {
+                playback_id,
+                sound_id: 5,
+                duration_milliseconds: Some(100)
+            }
+        );
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            PlaybackEvent::Finished {
+                playback_id,
+                sound_id: 5
+            }
+        );
     }
 }

@@ -1,14 +1,34 @@
 <script lang="ts">
   import type { Sound } from "$lib/library.svelte";
+  import type { ActivePlayback } from "$lib/playback.svelte";
 
   let {
     sound,
     selected,
+    playing,
     onplay,
-  }: { sound: Sound; selected: boolean; onplay: () => void } = $props();
+  }: {
+    sound: Sound;
+    selected: boolean;
+    playing: ActivePlayback | null;
+    onplay: () => void;
+  } = $props();
 </script>
 
 <button class="pad" class:selected aria-pressed={selected} onclick={onplay} title={sound.name}>
+  {#if playing}
+    <!-- Keyed so a replay restarts the fill instead of continuing the old one. -->
+    {#key playing.playbackId}
+      <span
+        class="fill"
+        class:unknown={playing.durationMilliseconds === null}
+        style:animation-duration={playing.durationMilliseconds === null
+          ? null
+          : `${playing.durationMilliseconds}ms`}
+        aria-hidden="true"
+      ></span>
+    {/key}
+  {/if}
   <span class="name">{sound.name}</span>
   {#if sound.favorite}
     <span class="favorite" aria-label="Favorite">★</span>
@@ -18,6 +38,8 @@
 <style>
   .pad {
     position: relative;
+    overflow: hidden;
+    isolation: isolate;
     display: flex;
     align-items: flex-end;
     aspect-ratio: 1;
@@ -44,6 +66,46 @@
 
   .pad.selected {
     border-color: var(--accent);
+  }
+
+  /* Sits under the text, so the name stays readable while it plays. */
+  .fill {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in srgb, var(--accent) 45%, transparent);
+    transform-origin: left;
+    animation: fill linear forwards;
+  }
+
+  .fill.unknown {
+    animation: pulse 1.2s var(--ease) infinite alternate;
+  }
+
+  @keyframes fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  @keyframes pulse {
+    from {
+      opacity: 0.35;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fill,
+    .fill.unknown {
+      animation: none;
+      opacity: 0.6;
+    }
   }
 
   .name {
