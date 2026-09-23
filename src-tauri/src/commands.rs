@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::audio_engine::{AudioEngine, SoundData};
+use crate::hotkeys;
 use crate::library::{ImportResult, Library, Sound};
 use crate::output_devices::{self, OutputDevice};
 
@@ -65,7 +66,18 @@ pub async fn import_sounds(
     Ok(library.import(paths))
 }
 
-/// Plays a library sound at its saved volume.
+/// Plays a library sound at its saved volume. Shared by the command and by hotkeys.
+pub fn play_library_sound(
+    engine: &AudioEngine,
+    library: &Library,
+    cache: &SoundCache,
+    id: i64,
+) -> Result<(), String> {
+    let volume = library.get(id)?.volume;
+    engine.play(id, cache.load(library, id)?, volume)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn play_sound(
     engine: State<'_, AudioEngine>,
@@ -73,9 +85,7 @@ pub async fn play_sound(
     cache: State<'_, SoundCache>,
     id: i64,
 ) -> Result<(), String> {
-    let volume = library.get(id)?.volume;
-    engine.play(id, cache.load(&library, id)?, volume)?;
-    Ok(())
+    play_library_sound(&engine, &library, &cache, id)
 }
 
 #[tauri::command]
@@ -112,10 +122,78 @@ pub async fn set_sound_favorite(
 
 #[tauri::command]
 pub async fn delete_sound(
+    app: AppHandle,
     library: State<'_, Library>,
     cache: State<'_, SoundCache>,
     id: i64,
 ) -> Result<(), String> {
+    let had_hotkey = library.get(id)?.hotkey.is_some();
     library.delete(id)?;
-    cache.evict(id)
+    cache.evict(id)?;
+    // Release the deleted pad's shortcut so it's free for other apps and pads.
+    if had_hotkey {
+        hotkeys::register_all(&app)?;
+    }
+    Ok(())
+}
+
+/// Sets or clears a pad's hotkey. If the system refuses the new shortcut — another app may own
+/// it — the previous hotkey is restored and the refusal is returned.
+#[tauri::command]
+pub async fn set_sound_hotkey(
+    app: AppHandle,
+    library: State<'_, Library>,
+    id: i64,
+    hotkey: Option<String>,
+) -> Result<Sound, String> {
+    let hotkey = hotkey.as_deref().map(hotkeys::normalize).transpose()?;
+    let previous = library.get(id)?.hotkey;
+    let sound = library.set_hotkey(id, hotkey.as_deref())?;
+    register_or_revert(&app, hotkey.as_deref(), || {
+        library.set_hotkey(id, previous.as_deref()).map(|_| ())
+    })?;
+    Ok(sound)
+}
+
+#[tauri::command]
+pub async fn stop_all_hotkey(library: State<'_, Library>) -> Result<Option<String>, String> {
+    library.stop_all_hotkey()
+}
+
+#[tauri::command]
+pub async fn set_stop_all_hotkey(
+    app: AppHandle,
+    library: State<'_, Library>,
+    hotkey: Option<String>,
+) -> Result<Option<String>, String> {
+    let hotkey = hotkey.as_deref().map(hotkeys::normalize).transpose()?;
+    let previous = library.stop_all_hotkey()?;
+    library.set_stop_all_hotkey(hotkey.as_deref())?;
+    register_or_revert(&app, hotkey.as_deref(), || {
+        library.set_stop_all_hotkey(previous.as_deref())
+    })?;
+    Ok(hotkey)
+}
+
+/// Saved hotkeys that aren't working because the system refused them, with why.
+#[tauri::command]
+pub async fn hotkey_failures(app: AppHandle) -> Result<HashMap<String, String>, String> {
+    hotkeys::failures(&app)
+}
+
+fn register_or_revert(
+    app: &AppHandle,
+    hotkey: Option<&str>,
+    revert: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    hotkeys::register_all(app)?;
+    let Some(hotkey) = hotkey else { return Ok(()) };
+    let Some(error) = hotkeys::failures(app)?.remove(hotkey) else {
+        return Ok(());
+    };
+    revert()?;
+    hotkeys::register_all(app)?;
+    Err(format!(
+        "the system refused that shortcut — another app may already use it ({error})"
+    ))
 }
