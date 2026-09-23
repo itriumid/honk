@@ -17,6 +17,9 @@ interface ImportResult {
   error: string | null;
 }
 
+/** App-wide shortcuts, as opposed to one per pad. */
+export type AppShortcut = "stop_all" | "toggle_popover";
+
 export interface ImportSummary {
   imported: number;
   duplicates: number;
@@ -26,16 +29,19 @@ export interface ImportSummary {
 class Library {
   sounds = $state<Sound[]>([]);
   selectedId = $state<number | null>(null);
-  stopAllHotkey = $state<string | null>(null);
+  appHotkeys = $state<Record<AppShortcut, string | null>>({
+    stop_all: null,
+    toggle_popover: null,
+  });
   /** Saved hotkeys the system refused to register, with why. */
   hotkeyFailures = $state<Record<string, string>>({});
 
   selected = $derived(this.sounds.find((sound) => sound.id === this.selectedId) ?? null);
 
   async refresh() {
-    [this.sounds, this.stopAllHotkey, this.hotkeyFailures] = await Promise.all([
+    [this.sounds, this.appHotkeys, this.hotkeyFailures] = await Promise.all([
       invoke<Sound[]>("list_sounds"),
-      invoke<string | null>("stop_all_hotkey"),
+      invoke<Record<AppShortcut, string | null>>("app_hotkeys"),
       invoke<Record<string, string>>("hotkey_failures"),
     ]);
   }
@@ -49,8 +55,8 @@ class Library {
     this.hotkeyFailures = await invoke<Record<string, string>>("hotkey_failures");
   }
 
-  async setStopAllHotkey(hotkey: string | null) {
-    this.stopAllHotkey = await invoke<string | null>("set_stop_all_hotkey", { hotkey });
+  async setAppHotkey(shortcut: AppShortcut, hotkey: string | null) {
+    this.appHotkeys[shortcut] = await invoke<string | null>("set_app_hotkey", { shortcut, hotkey });
     this.hotkeyFailures = await invoke<Record<string, string>>("hotkey_failures");
   }
 

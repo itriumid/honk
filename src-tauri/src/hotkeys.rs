@@ -1,4 +1,4 @@
-//! Global shortcuts: one per pad, plus one for Stop all. Registered from Rust, so they work while
+//! Global shortcuts: one per pad, plus the app shortcuts (Stop all, the popover). Registered from Rust, so they work while
 //! the window is hidden or another app has focus.
 
 use std::collections::HashMap;
@@ -12,12 +12,14 @@ use tauri_plugin_global_shortcut::{
 
 use crate::audio_engine::AudioEngine;
 use crate::commands::{self, SoundCache};
-use crate::library::Library;
+use crate::library::{AppShortcut, Library};
+use crate::popover;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Action {
     PlaySound(i64),
     StopAll,
+    TogglePopover,
 }
 
 /// What each registered shortcut does, and which saved hotkeys the system refused.
@@ -66,8 +68,14 @@ pub fn register_all(app: &AppHandle) -> Result<(), String> {
         .into_iter()
         .filter_map(|sound| Some((sound.hotkey?, Action::PlaySound(sound.id))))
         .collect();
-    if let Some(hotkey) = library.stop_all_hotkey()? {
-        bindings.push((hotkey, Action::StopAll));
+    for shortcut in AppShortcut::ALL {
+        if let Some(hotkey) = library.app_hotkey(shortcut)? {
+            let action = match shortcut {
+                AppShortcut::StopAll => Action::StopAll,
+                AppShortcut::TogglePopover => Action::TogglePopover,
+            };
+            bindings.push((hotkey, action));
+        }
     }
 
     let shortcuts = app.global_shortcut();
@@ -123,6 +131,10 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
         .ok()
         .and_then(|actions| actions.get(&shortcut.id()).copied());
     let Some(action) = action else { return };
+    if action == Action::TogglePopover {
+        popover::toggle(app);
+        return;
+    }
 
     // This runs on the main thread, and a first play reads the sound from disk.
     let app = app.clone();
@@ -136,6 +148,7 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
                 id,
             ),
             Action::StopAll => engine.stop_all(),
+            Action::TogglePopover => Ok(()),
         };
         if let Err(error) = result {
             eprintln!("hotkey action failed: {error}");

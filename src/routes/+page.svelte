@@ -3,13 +3,19 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import { playSound, stopAll } from "$lib/audio";
-  import { fileName, library, type ImportSummary } from "$lib/library.svelte";
+  import { fileName, library, type AppShortcut, type ImportSummary } from "$lib/library.svelte";
   import { playback } from "$lib/playback.svelte";
+  import DockSetting from "$lib/components/DockSetting.svelte";
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
   import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
+
+  const APP_SHORTCUTS: [AppShortcut, string][] = [
+    ["stop_all", "Stop all"],
+    ["toggle_popover", "Popover"],
+  ];
 
   const AUDIO_EXTENSIONS = ["mp3", "wav", "flac", "ogg", "oga", "m4a", "aac", "mp4"];
 
@@ -113,14 +119,17 @@
 
   <footer>
     <OutputSettings onerror={(message) => (notice = message)} />
-    <div class="stop-all-hotkey">
-      <span>Stop all</span>
-      <HotkeyRecorder
-        hotkey={library.stopAllHotkey}
-        failure={library.failureFor(library.stopAllHotkey)}
-        onsave={(hotkey) => library.setStopAllHotkey(hotkey)}
-      />
-    </div>
+    {#each APP_SHORTCUTS as [shortcut, label] (shortcut)}
+      <div class="app-hotkey">
+        <span>{label}</span>
+        <HotkeyRecorder
+          hotkey={library.appHotkeys[shortcut]}
+          failure={library.failureFor(library.appHotkeys[shortcut])}
+          onsave={(hotkey) => library.setAppHotkey(shortcut, hotkey)}
+        />
+      </div>
+    {/each}
+    <DockSetting onerror={(message) => (notice = message)} />
     <ThemeSwitcher />
   </footer>
 
@@ -154,7 +163,7 @@
     border-top: 1px solid var(--border);
   }
 
-  .stop-all-hotkey {
+  .app-hotkey {
     display: flex;
     flex-wrap: wrap;
     align-items: center;

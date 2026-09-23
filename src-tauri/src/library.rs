@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::audio_engine::{self, SoundData};
@@ -59,8 +59,36 @@ const MIGRATIONS: &[&str] = &[
 /// Every query that builds a `Sound` selects these, in this order — see `sound_from_row`.
 const SOUND_COLUMNS: &str = "id, name, volume, favorite, hotkey";
 
-/// The `settings` key for the global shortcut that stops every sound.
-const STOP_ALL_HOTKEY: &str = "stop_all_hotkey";
+/// App-wide global shortcuts, as opposed to one per pad. Each is stored under its own
+/// `settings` key and can't share a hotkey with a pad or with another app shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppShortcut {
+    StopAll,
+    TogglePopover,
+}
+
+/// The `settings` key for whether Honk shows in the Dock (macOS). Absent means yes.
+const SHOW_IN_DOCK: &str = "show_in_dock";
+
+impl AppShortcut {
+    pub const ALL: [AppShortcut; 2] = [AppShortcut::StopAll, AppShortcut::TogglePopover];
+
+    fn setting_key(self) -> &'static str {
+        match self {
+            // Named before there was more than one; renaming it would drop saved hotkeys.
+            AppShortcut::StopAll => "stop_all_hotkey",
+            AppShortcut::TogglePopover => "toggle_popover_hotkey",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            AppShortcut::StopAll => "Stop all",
+            AppShortcut::TogglePopover => "the popover",
+        }
+    }
+}
 
 impl Library {
     /// Opens (or creates) the library under `directory`: `library.sqlite3` plus a `sounds/`
@@ -218,67 +246,67 @@ impl Library {
     }
 
     /// Assigns `hotkey` (already normalized) to a sound, or clears it with `None`. Refuses a
-    /// hotkey another pad or the stop-all shortcut already uses, naming which.
+    /// hotkey another pad or an app shortcut already uses, naming which.
     pub fn set_hotkey(&self, id: i64, hotkey: Option<&str>) -> Result<Sound, String> {
         if let Some(hotkey) = hotkey {
             let connection = self.connection()?;
-            if let Some(owner) = connection
-                .query_row(
-                    "SELECT name FROM sounds WHERE hotkey = ?1 AND id != ?2",
-                    params![hotkey, id],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(database_error)?
-            {
-                return Err(format!(
-                    "that shortcut is already used by \u{201c}{owner}\u{201d}"
-                ));
-            }
-            if read_setting(&connection, STOP_ALL_HOTKEY)?.as_deref() == Some(hotkey) {
-                return Err("that shortcut is already used by Stop all".to_string());
+            if let Some(owner) = hotkey_owner(&connection, hotkey, Holder::Sound(id))? {
+                return Err(format!("that shortcut is already used by {owner}"));
             }
         }
         self.update(id, "UPDATE sounds SET hotkey = ?2 WHERE id = ?1", hotkey)
     }
 
-    pub fn stop_all_hotkey(&self) -> Result<Option<String>, String> {
+    pub fn app_hotkey(&self, shortcut: AppShortcut) -> Result<Option<String>, String> {
         let connection = self.connection()?;
-        read_setting(&connection, STOP_ALL_HOTKEY)
+        read_setting(&connection, shortcut.setting_key())
     }
 
-    /// Sets or clears the stop-all shortcut, refusing one a pad already uses.
-    pub fn set_stop_all_hotkey(&self, hotkey: Option<&str>) -> Result<(), String> {
+    /// Sets or clears an app shortcut, refusing a hotkey a pad or another app shortcut uses.
+    pub fn set_app_hotkey(
+        &self,
+        shortcut: AppShortcut,
+        hotkey: Option<&str>,
+    ) -> Result<(), String> {
         let connection = self.connection()?;
         match hotkey {
             Some(hotkey) => {
-                if let Some(owner) = connection
-                    .query_row(
-                        "SELECT name FROM sounds WHERE hotkey = ?1",
-                        [hotkey],
-                        |row| row.get::<_, String>(0),
-                    )
-                    .optional()
-                    .map_err(database_error)?
-                {
-                    return Err(format!(
-                        "that shortcut is already used by \u{201c}{owner}\u{201d}"
-                    ));
+                if let Some(owner) = hotkey_owner(&connection, hotkey, Holder::App(shortcut))? {
+                    return Err(format!("that shortcut is already used by {owner}"));
                 }
                 connection
                     .execute(
                         "INSERT INTO settings (key, value) VALUES (?1, ?2)
                          ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                        params![STOP_ALL_HOTKEY, hotkey],
+                        params![shortcut.setting_key(), hotkey],
                     )
                     .map_err(database_error)?;
             }
             None => {
                 connection
-                    .execute("DELETE FROM settings WHERE key = ?1", [STOP_ALL_HOTKEY])
+                    .execute(
+                        "DELETE FROM settings WHERE key = ?1",
+                        [shortcut.setting_key()],
+                    )
                     .map_err(database_error)?;
             }
         }
+        Ok(())
+    }
+
+    pub fn show_in_dock(&self) -> Result<bool, String> {
+        let connection = self.connection()?;
+        Ok(read_setting(&connection, SHOW_IN_DOCK)?.as_deref() != Some("false"))
+    }
+
+    pub fn set_show_in_dock(&self, show: bool) -> Result<(), String> {
+        self.connection()?
+            .execute(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![SHOW_IN_DOCK, show.to_string()],
+            )
+            .map_err(database_error)?;
         Ok(())
     }
 
@@ -329,6 +357,45 @@ fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
         transaction.commit()?;
     }
     Ok(())
+}
+
+/// Whatever is asking for a hotkey, so it isn't reported as conflicting with itself.
+#[derive(Clone, Copy)]
+enum Holder {
+    Sound(i64),
+    App(AppShortcut),
+}
+
+/// Who, other than `asking`, already uses `hotkey` — described for an error message.
+fn hotkey_owner(
+    connection: &Connection,
+    hotkey: &str,
+    asking: Holder,
+) -> Result<Option<String>, String> {
+    let excluded_sound = match asking {
+        Holder::Sound(id) => id,
+        Holder::App(_) => -1,
+    };
+    let sound = connection
+        .query_row(
+            "SELECT name FROM sounds WHERE hotkey = ?1 AND id != ?2",
+            params![hotkey, excluded_sound],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(database_error)?;
+    if let Some(name) = sound {
+        return Ok(Some(format!("\u{201c}{name}\u{201d}")));
+    }
+    for shortcut in AppShortcut::ALL {
+        if matches!(asking, Holder::App(own) if own == shortcut) {
+            continue;
+        }
+        if read_setting(connection, shortcut.setting_key())?.as_deref() == Some(hotkey) {
+            return Ok(Some(shortcut.label().to_string()));
+        }
+    }
+    Ok(None)
 }
 
 fn read_setting(connection: &Connection, key: &str) -> Result<Option<String>, String> {
@@ -563,29 +630,66 @@ mod tests {
     }
 
     #[test]
-    fn stop_all_and_pads_never_share_a_hotkey() {
+    fn app_shortcuts_and_pads_never_share_a_hotkey() {
         let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[13]))]);
         let horn = library.import(paths)[0].sound.clone().unwrap().id;
-        assert_eq!(library.stop_all_hotkey().unwrap(), None);
+        let stop_all = AppShortcut::StopAll;
+        let popover = AppShortcut::TogglePopover;
+        assert_eq!(library.app_hotkey(stop_all).unwrap(), None);
 
-        library.set_stop_all_hotkey(Some("alt+Escape")).unwrap();
+        library
+            .set_app_hotkey(stop_all, Some("alt+Escape"))
+            .unwrap();
         assert_eq!(
-            library.stop_all_hotkey().unwrap().as_deref(),
+            library.app_hotkey(stop_all).unwrap().as_deref(),
             Some("alt+Escape")
         );
+        // Re-saving its own hotkey isn't a conflict.
+        assert!(library.set_app_hotkey(stop_all, Some("alt+Escape")).is_ok());
         assert!(library
             .set_hotkey(horn, Some("alt+Escape"))
             .unwrap_err()
             .contains("Stop all"));
+        assert!(library
+            .set_app_hotkey(popover, Some("alt+Escape"))
+            .unwrap_err()
+            .contains("Stop all"));
+
+        library.set_app_hotkey(popover, Some("alt+Space")).unwrap();
+        assert!(library
+            .set_app_hotkey(stop_all, Some("alt+Space"))
+            .unwrap_err()
+            .contains("popover"));
+        assert!(library
+            .set_hotkey(horn, Some("alt+Space"))
+            .unwrap_err()
+            .contains("popover"));
 
         library.set_hotkey(horn, Some("alt+Digit2")).unwrap();
         assert!(library
-            .set_stop_all_hotkey(Some("alt+Digit2"))
+            .set_app_hotkey(popover, Some("alt+Digit2"))
             .unwrap_err()
             .contains("horn"));
 
-        library.set_stop_all_hotkey(None).unwrap();
-        assert_eq!(library.stop_all_hotkey().unwrap(), None);
+        library.set_app_hotkey(stop_all, None).unwrap();
+        assert_eq!(library.app_hotkey(stop_all).unwrap(), None);
+        assert_eq!(
+            library.app_hotkey(popover).unwrap().as_deref(),
+            Some("alt+Space")
+        );
+    }
+
+    #[test]
+    fn showing_in_the_dock_defaults_to_yes_and_persists() {
+        let directory = scratch_directory();
+        let library = Library::open(&directory).unwrap();
+        assert!(library.show_in_dock().unwrap());
+
+        library.set_show_in_dock(false).unwrap();
+        assert!(!Library::open(&directory).unwrap().show_in_dock().unwrap());
+
+        library.set_show_in_dock(true).unwrap();
+        assert!(library.show_in_dock().unwrap());
     }
 
     #[test]
