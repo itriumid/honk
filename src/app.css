@@ -80,6 +80,23 @@ body {
   color: var(--on-accent);
 }
 
+/*
+ * The popover window is transparent so macOS's blur shows through: the page stays clear, and
+ * surfaces are translucent versions of the usual ones instead of solid fills.
+ */
+:root {
+  --glass: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+:root.popover body {
+  background: transparent;
+}
+
+:root.popover {
+  --surface: color-mix(in srgb, var(--elevated) 45%, transparent);
+  --border: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration: 0ms;
