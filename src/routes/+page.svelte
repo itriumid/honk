@@ -1,10 +1,12 @@
 <script lang="ts">
+  import AudioDevPanel from "$lib/components/AudioDevPanel.svelte";
   import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 </script>
 
 <main>
   <h1>Honk</h1>
   <ThemeSwitcher />
+  <AudioDevPanel />
 </main>
 
 <style>
