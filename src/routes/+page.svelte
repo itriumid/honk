@@ -251,9 +251,11 @@
 </div>
 
 <style>
+  /* A column rather than grid rows: the notice and the editor come and go, and the pads should
+     always be what takes up the remaining space. */
   .app {
-    display: grid;
-    grid-template-rows: auto auto 1fr auto auto;
+    display: flex;
+    flex-direction: column;
     height: 100%;
   }
 
@@ -329,6 +331,8 @@
   }
 
   main {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: var(--space-4);
   }
