@@ -2,7 +2,7 @@
 name = "honk"
 version = "0.1.0"
 description = "A lightweight soundboard for the desktop"
-authors = ["Muhammad Zakir"]
+authors = ["Itrium"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

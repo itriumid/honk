@@ -2,11 +2,17 @@
 
 A lightweight, cross-platform soundboard built with Tauri. Import your sounds, bind them to global hotkeys, and fire them from a macOS menu bar popover without leaving whatever you're doing.
 
-> Early development. No release has been published yet; when one is, it'll be on the [Releases page](https://github.com/muhammad-zakir/honk/releases).
+> Early days: [the latest release](https://github.com/itriumid/honk/releases/latest) works, but expect rough edges. Made by [Itrium](https://github.com/itriumid).
+
+## Privacy
+
+Honk makes no network requests of its own: no accounts, no analytics, no telemetry, no update
+checks. Your sounds and settings stay on your computer, and a `.honk` file only goes where you
+send it. The code is all here, so you can check.
 
 ## Install
 
-Download the installer for your system from the latest release on the [Releases page](https://github.com/muhammad-zakir/honk/releases).
+Download the installer for your system from the latest release on the [Releases page](https://github.com/itriumid/honk/releases).
 
 | System | File | Notes |
 | --- | --- | --- |
@@ -30,7 +36,7 @@ Code signing certificates cost money every year, and Honk is a free hobby projec
 installers aren't signed by a verified developer. The app is built from this repository's source
 by [the release workflow](.github/workflows/release.yml), in public, on GitHub's own machines —
 but your operating system has no way to know that, so it asks you to confirm once. Signing is
-tracked in [#12](https://github.com/muhammad-zakir/honk/issues/12).
+tracked in [#12](https://github.com/itriumid/honk/issues/12).
 
 **macOS.** The first time you open Honk, macOS says it "could not verify Honk is free of malware"
 and only offers to move it to the Bin. To open it anyway:
@@ -61,14 +67,14 @@ check when you open the file directly.
 ### Platform notes
 
 - Honk is built and tested mainly on macOS. The Windows and Linux builds compile and bundle in CI
-  on every change, but haven't been tried by hand yet ([#11](https://github.com/muhammad-zakir/honk/issues/11)).
+  on every change, but haven't been tried by hand yet ([#11](https://github.com/itriumid/honk/issues/11)).
   Reports are welcome.
 - The popover is designed for the macOS menu bar. On Windows it opens from the tray icon as a
   plain window, without the translucent background. On Linux, clicking the tray icon shows its
-  menu instead, so the popover only opens from its hotkey ([#10](https://github.com/muhammad-zakir/honk/issues/10)).
+  menu instead, so the popover only opens from its hotkey ([#10](https://github.com/itriumid/honk/issues/10)).
 - Global hotkeys on Linux need an X11 session. Under Wayland most compositors don't let an app
   register system-wide shortcuts, so pad hotkeys may not fire outside the Honk window
-  ([#9](https://github.com/muhammad-zakir/honk/issues/9)).
+  ([#9](https://github.com/itriumid/honk/issues/9)).
 
 ## Features
 

@@ -1,5 +1,6 @@
 mod audio_engine;
 mod commands;
+mod data_directory;
 mod hotkeys;
 mod library;
 mod output_devices;
@@ -29,6 +30,11 @@ pub fn run() {
         )
         .setup(|app| {
             let data_directory = app.path().app_data_dir()?;
+            // Failing to move an old library shouldn't stop the app; it starts with an empty
+            // one and says why, and the old directory stays where it was.
+            if let Err(error) = data_directory::adopt_previous(&data_directory) {
+                eprintln!("could not move the library from an older version: {error}");
+            }
             app.manage(library::Library::open(&data_directory)?);
 
             let handle = app.handle().clone();
