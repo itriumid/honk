@@ -61,6 +61,7 @@ pub fn run() {
             commands::rename_sound,
             commands::set_sound_volume,
             commands::set_sound_favorite,
+            commands::reorder_sounds,
             commands::delete_sound,
             commands::set_sound_hotkey,
             commands::app_hotkeys,
