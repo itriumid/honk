@@ -5,6 +5,7 @@
   import { playSound, stopAll } from "$lib/audio";
   import { fileName, library, type AppShortcut, type ImportSummary } from "$lib/library.svelte";
   import { playback } from "$lib/playback.svelte";
+  import CategoryBar from "$lib/components/CategoryBar.svelte";
   import DockSetting from "$lib/components/DockSetting.svelte";
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
@@ -138,7 +139,11 @@
     const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
     if (!event.altKey || step === undefined) return;
     event.preventDefault();
-    library.move(id, library.sounds.findIndex((sound) => sound.id === id) + step);
+    // One place among the pads on screen; pads hidden by the category filter don't count.
+    const shown = library.visible;
+    const neighbor = shown[shown.findIndex((sound) => sound.id === id) + step];
+    if (!neighbor) return;
+    library.move(id, library.sounds.findIndex((sound) => sound.id === neighbor.id));
     await tick();
     // Moving a focused element in the DOM can drop its focus; put it back.
     grid?.querySelector<HTMLElement>(`[data-sound-id="${id}"]`)?.focus();
@@ -190,8 +195,10 @@
     </p>
   {/if}
 
+  <CategoryBar onerror={(message) => (notice = message)} />
+
   <main bind:this={list}>
-    {#if library.sounds.length}
+    {#if library.visible.length}
       <p id="reorder-hint" class="visually-hidden">
         Drag a pad, or press Alt and an arrow key, to move it.
       </p>
@@ -202,7 +209,7 @@
         aria-label="Sounds"
         bind:this={grid}
       >
-        {#each library.sounds as sound (sound.id)}
+        {#each library.visible as sound (sound.id)}
           <SoundPad
             {sound}
             selected={library.selectedId === sound.id}
@@ -216,6 +223,13 @@
             onkeydown={(event) => movePadWithKeyboard(sound.id, event)}
           />
         {/each}
+      </div>
+    {:else if library.sounds.length}
+      <div class="empty">
+        <p>Nothing in this category yet.</p>
+        <p class="hint">
+          Drop audio files here to add them to it, or pick it for a sound in the sound's editor.
+        </p>
       </div>
     {:else}
       <div class="empty">
@@ -251,9 +265,11 @@
 </div>
 
 <style>
+  /* A column rather than grid rows: the notice and the editor come and go, and the pads should
+     always be what takes up the remaining space. */
   .app {
-    display: grid;
-    grid-template-rows: auto auto 1fr auto auto;
+    display: flex;
+    flex-direction: column;
     height: 100%;
   }
 
@@ -329,6 +345,8 @@
   }
 
   main {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: var(--space-4);
   }

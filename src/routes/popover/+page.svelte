@@ -11,20 +11,64 @@
   import { playback } from "$lib/playback.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
 
+  /** Which pads the popover shows when not searching: favorites, everything, or a category. */
+  type View = "favorites" | "all" | number;
+  const VIEW_KEY = "honk.popover.view";
+
   let query = $state("");
   let error = $state("");
   let search: HTMLInputElement | undefined = $state();
+  let chosen = $state<View | null>(readView());
 
   const favorites = $derived(library.sounds.filter((sound) => sound.favorite));
   const searching = $derived(query.trim() !== "");
-  const shown: Sound[] = $derived.by(() => {
-    if (!searching) return favorites.length ? favorites : library.sounds;
-    const words = query.trim().toLowerCase().split(/\s+/);
-    return library.sounds.filter((sound) =>
-      words.every((word) => sound.name.toLowerCase().includes(word)),
-    );
+  // The chosen view, unless it no longer applies: a deleted category, or favorites once there
+  // are none. Until then it's kept, so the choice survives the library loading.
+  const view: View = $derived.by(() => {
+    if (typeof chosen === "number") {
+      if (library.categories.some((category) => category.id === chosen)) return chosen;
+    } else if (chosen === "all") return "all";
+    return favorites.length ? "favorites" : "all";
   });
-  const heading = $derived(searching ? "Results" : favorites.length ? "Favorites" : "All sounds");
+  const shown: Sound[] = $derived.by(() => {
+    if (searching) {
+      // Search always covers the whole library, whatever view is picked.
+      const words = query.trim().toLowerCase().split(/\s+/);
+      return library.sounds.filter((sound) =>
+        words.every((word) => sound.name.toLowerCase().includes(word)),
+      );
+    }
+    if (view === "favorites") return favorites;
+    if (view === "all") return library.sounds;
+    return library.sounds.filter((sound) => sound.category_id === view);
+  });
+  const heading = $derived.by(() => {
+    if (searching) return "Results";
+    if (view === "favorites") return "Favorites";
+    if (view === "all") return "All sounds";
+    return library.categories.find((category) => category.id === view)?.name ?? "All sounds";
+  });
+
+  // Storage can be unavailable or cleared; the popover works the same without it.
+  function readView(): View | null {
+    try {
+      const stored = localStorage.getItem(VIEW_KEY);
+      if (stored === "favorites" || stored === "all") return stored;
+      return stored && /^\d+$/.test(stored) ? Number(stored) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function choose(next: View) {
+    chosen = next;
+    query = "";
+    try {
+      localStorage.setItem(VIEW_KEY, String(next));
+    } catch {
+      // Remembering the choice is a convenience; losing it is fine.
+    }
+  }
 
   async function attempt(action: () => Promise<void>) {
     error = "";
@@ -78,6 +122,24 @@
     autocomplete="off"
   />
 
+  <nav class="views" aria-label="Show">
+    {#if favorites.length}
+      <button class="chip" aria-pressed={!searching && view === "favorites"} onclick={() => choose("favorites")}
+        >★ Favorites</button
+      >
+    {/if}
+    <button class="chip" aria-pressed={!searching && view === "all"} onclick={() => choose("all")}
+      >All</button
+    >
+    {#each library.categories as category (category.id)}
+      <button
+        class="chip"
+        aria-pressed={!searching && view === category.id}
+        onclick={() => choose(category.id)}>{category.name}</button
+      >
+    {/each}
+  </nav>
+
   <section aria-label={heading}>
     <h2>{heading}</h2>
     {#if shown.length}
@@ -94,6 +156,8 @@
       </div>
     {:else if searching}
       <p class="empty">No sounds match “{query.trim()}”.</p>
+    {:else if library.sounds.length}
+      <p class="empty">Nothing in {heading} yet.</p>
     {:else}
       <p class="empty">No sounds yet. Open Honk to import some.</p>
     {/if}
@@ -112,7 +176,7 @@
 <style>
   .popover {
     display: grid;
-    grid-template-rows: auto 1fr auto auto;
+    grid-template-rows: auto auto 1fr auto auto;
     gap: var(--space-3);
     height: 100%;
     padding: var(--space-3);
@@ -130,6 +194,30 @@
 
   .search::placeholder {
     color: var(--muted);
+  }
+
+  .views {
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .chip {
+    flex: none;
+    padding: 2px var(--space-2);
+    background: var(--glass);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .chip[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: transparent;
   }
 
   section {

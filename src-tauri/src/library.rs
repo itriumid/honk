@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -22,6 +22,14 @@ pub struct Sound {
     pub favorite: bool,
     /// Canonical global-shortcut string, e.g. `alt+Digit1`. See `hotkeys::normalize`.
     pub hotkey: Option<String>,
+    /// The one category the sound is in, if any.
+    pub category_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Category {
+    pub id: i64,
+    pub name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -54,10 +62,17 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE sounds ADD COLUMN hotkey TEXT;
      CREATE UNIQUE INDEX sounds_hotkey ON sounds (hotkey) WHERE hotkey IS NOT NULL;
      CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    // Foreign keys aren't enforced (SQLite leaves them off by default), so `delete_category`
+    // clears the column itself.
+    "CREATE TABLE categories (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE
+     );
+     ALTER TABLE sounds ADD COLUMN category_id INTEGER REFERENCES categories (id);",
 ];
 
 /// Every query that builds a `Sound` selects these, in this order — see `sound_from_row`.
-const SOUND_COLUMNS: &str = "id, name, volume, favorite, hotkey";
+const SOUND_COLUMNS: &str = "id, name, volume, favorite, hotkey, category_id";
 
 /// App-wide global shortcuts, as opposed to one per pad. Each is stored under its own
 /// `settings` key and can't share a hotkey with a pad or with another app shortcut.
@@ -129,11 +144,12 @@ impl Library {
         Ok(sounds)
     }
 
-    /// Imports each path independently — one bad file doesn't stop the rest.
-    pub fn import(&self, paths: Vec<PathBuf>) -> Vec<ImportResult> {
+    /// Imports each path independently — one bad file doesn't stop the rest. New sounds go in
+    /// `category`; a file that's already in the library keeps the category it has.
+    pub fn import(&self, paths: Vec<PathBuf>, category: Option<i64>) -> Vec<ImportResult> {
         paths
             .into_iter()
-            .map(|path| match self.import_one(&path) {
+            .map(|path| match self.import_one(&path, category) {
                 Ok((sound, duplicate)) => ImportResult {
                     path,
                     sound: Some(sound),
@@ -150,7 +166,7 @@ impl Library {
             .collect()
     }
 
-    fn import_one(&self, path: &Path) -> Result<(Sound, bool), String> {
+    fn import_one(&self, path: &Path, category: Option<i64>) -> Result<(Sound, bool), String> {
         let bytes = fs::read(path).map_err(|error| format!("could not read the file: {error}"))?;
         let content_hash = hash(&bytes);
 
@@ -182,11 +198,13 @@ impl Library {
         let inserted = connection
             .query_row(
                 &format!(
-                    "INSERT INTO sounds (name, content_hash, file_name, position)
-                     VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM sounds))
+                    // A category deleted since the caller listed them becomes no category.
+                    "INSERT INTO sounds (name, content_hash, file_name, position, category_id)
+                     VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM sounds),
+                             (SELECT id FROM categories WHERE id = ?4))
                      RETURNING {SOUND_COLUMNS}"
                 ),
-                params![name, content_hash, file_name],
+                params![name, content_hash, file_name, category],
                 sound_from_row,
             )
             .map_err(database_error);
@@ -229,6 +247,86 @@ impl Library {
             "UPDATE sounds SET favorite = ?2 WHERE id = ?1",
             favorite,
         )
+    }
+
+    /// Puts a sound in `category`, or in none with `None`.
+    pub fn set_category(&self, id: i64, category: Option<i64>) -> Result<Sound, String> {
+        if let Some(category) = category {
+            let exists = self
+                .connection()?
+                .query_row("SELECT 1 FROM categories WHERE id = ?1", [category], |_| {
+                    Ok(())
+                })
+                .optional()
+                .map_err(database_error)?
+                .is_some();
+            if !exists {
+                return Err("that category no longer exists".to_string());
+            }
+        }
+        self.update(
+            id,
+            "UPDATE sounds SET category_id = ?2 WHERE id = ?1",
+            category,
+        )
+    }
+
+    /// Every category, oldest first.
+    pub fn categories(&self) -> Result<Vec<Category>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare("SELECT id, name FROM categories ORDER BY id")
+            .map_err(database_error)?;
+        let categories = statement
+            .query_map([], category_from_row)
+            .map_err(database_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+        Ok(categories)
+    }
+
+    /// Names are trimmed and unique, ignoring case.
+    pub fn create_category(&self, name: &str) -> Result<Category, String> {
+        let name = category_name(name)?;
+        self.connection()?
+            .query_row(
+                "INSERT INTO categories (name) VALUES (?1) RETURNING id, name",
+                [name],
+                category_from_row,
+            )
+            .map_err(|error| category_error(error, name))
+    }
+
+    pub fn rename_category(&self, id: i64, name: &str) -> Result<Category, String> {
+        let name = category_name(name)?;
+        self.connection()?
+            .query_row(
+                "UPDATE categories SET name = ?2 WHERE id = ?1 RETURNING id, name",
+                params![id, name],
+                category_from_row,
+            )
+            .optional()
+            .map_err(|error| category_error(error, name))?
+            .ok_or_else(|| "that category no longer exists".to_string())
+    }
+
+    /// Removes the category. Its sounds stay in the library, in no category.
+    pub fn delete_category(&self, id: i64) -> Result<(), String> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        transaction
+            .execute(
+                "UPDATE sounds SET category_id = NULL WHERE category_id = ?1",
+                [id],
+            )
+            .map_err(database_error)?;
+        let deleted = transaction
+            .execute("DELETE FROM categories WHERE id = ?1", [id])
+            .map_err(database_error)?;
+        if deleted == 0 {
+            return Err("that category no longer exists".to_string());
+        }
+        transaction.commit().map_err(database_error)
     }
 
     /// Puts the library in the order of `ids`, which must name every sound exactly once. A list
@@ -468,7 +566,35 @@ fn sound_from_row(row: &Row) -> rusqlite::Result<Sound> {
         volume: row.get(2)?,
         favorite: row.get(3)?,
         hotkey: row.get(4)?,
+        category_id: row.get(5)?,
     })
+}
+
+fn category_from_row(row: &Row) -> rusqlite::Result<Category> {
+    Ok(Category {
+        id: row.get(0)?,
+        name: row.get(1)?,
+    })
+}
+
+fn category_name(name: &str) -> Result<&str, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a category needs a name".to_string());
+    }
+    Ok(name)
+}
+
+/// Explains a clash with another category's name; anything else is a plain database error.
+fn category_error(error: rusqlite::Error, name: &str) -> String {
+    match error {
+        rusqlite::Error::SqliteFailure(failure, _)
+            if failure.code == ErrorCode::ConstraintViolation =>
+        {
+            format!("there's already a category called \u{201c}{name}\u{201d}")
+        }
+        error => database_error(error),
+    }
 }
 
 fn hash(bytes: &[u8]) -> String {
@@ -549,7 +675,7 @@ mod tests {
     #[test]
     fn imports_a_sound_named_after_its_file_and_stored_by_hash() {
         let (library, directory, paths) = library_with_files(&[("Airhorn.WAV", wav(&[1, 2, 3]))]);
-        let results = library.import(paths);
+        let results = library.import(paths, None);
 
         let sound = results[0].sound.clone().expect("import should succeed");
         assert_eq!(sound.name, "Airhorn");
@@ -575,7 +701,7 @@ mod tests {
             ("first.wav", wav(&[1, 2, 3])),
             ("renamed copy.wav", wav(&[1, 2, 3])),
         ]);
-        let results = library.import(paths);
+        let results = library.import(paths, None);
 
         assert!(!results[0].duplicate);
         assert!(results[1].duplicate);
@@ -590,7 +716,7 @@ mod tests {
             ("notes.mp3", b"not audio at all".to_vec()),
             ("real.wav", wav(&[4, 5, 6])),
         ]);
-        let results = library.import(paths);
+        let results = library.import(paths, None);
 
         assert!(results[0].error.is_some());
         assert!(
@@ -608,7 +734,7 @@ mod tests {
             ("a.wav", wav(&[1])),
             ("b.wav", wav(&[2])),
         ]);
-        library.import(paths);
+        library.import(paths, None);
         let names: Vec<_> = library
             .list()
             .unwrap()
@@ -635,7 +761,7 @@ mod tests {
             ("c.wav", wav(&[3])),
         ]);
         let ids: Vec<_> = library
-            .import(paths)
+            .import(paths, None)
             .into_iter()
             .map(|result| result.sound.unwrap().id)
             .collect();
@@ -645,16 +771,15 @@ mod tests {
 
         let later = directory.join("d.wav");
         fs::write(&later, wav(&[4])).unwrap();
-        library.import(vec![later]);
+        library.import(vec![later], None);
         assert_eq!(names(&library), ["c", "a", "b", "d"]);
     }
 
     #[test]
     fn a_reorder_that_does_not_match_the_library_changes_nothing() {
-        let (library, _, paths) =
-            library_with_files(&[("a.wav", wav(&[1])), ("b.wav", wav(&[2]))]);
+        let (library, _, paths) = library_with_files(&[("a.wav", wav(&[1])), ("b.wav", wav(&[2]))]);
         let ids: Vec<_> = library
-            .import(paths)
+            .import(paths, None)
             .into_iter()
             .map(|result| result.sound.unwrap().id)
             .collect();
@@ -664,15 +789,96 @@ mod tests {
             vec![ids[1], ids[0], ids[0] + ids[1]],
             vec![ids[1], ids[1]],
         ] {
-            assert!(library.reorder(&stale).is_err(), "{stale:?} should be refused");
+            assert!(
+                library.reorder(&stale).is_err(),
+                "{stale:?} should be refused"
+            );
             assert_eq!(names(&library), ["a", "b"]);
         }
     }
 
     #[test]
+    fn categories_are_named_uniquely_and_listed_oldest_first() {
+        let (library, _, _) = library_with_files(&[]);
+        let memes = library.create_category("  Memes ").unwrap();
+        assert_eq!(memes.name, "Memes");
+        library.create_category("Stream").unwrap();
+
+        assert!(library
+            .create_category("MEMES")
+            .unwrap_err()
+            .contains("already a category"));
+        assert!(library.create_category("   ").is_err());
+        assert!(library
+            .rename_category(memes.id, "stream")
+            .unwrap_err()
+            .contains("already a category"));
+        assert_eq!(
+            library.rename_category(memes.id, "Bits").unwrap().name,
+            "Bits"
+        );
+        assert!(library.rename_category(memes.id + 100, "Nope").is_err());
+
+        let names: Vec<_> = library
+            .categories()
+            .unwrap()
+            .into_iter()
+            .map(|category| category.name)
+            .collect();
+        assert_eq!(names, ["Bits", "Stream"]);
+    }
+
+    #[test]
+    fn new_imports_go_in_the_given_category_but_duplicates_keep_theirs() {
+        let (library, directory, paths) = library_with_files(&[("horn.wav", wav(&[1]))]);
+        let memes = library.create_category("Memes").unwrap();
+        let stream = library.create_category("Stream").unwrap();
+
+        let horn = library.import(paths.clone(), Some(memes.id))[0]
+            .sound
+            .clone()
+            .unwrap();
+        assert_eq!(horn.category_id, Some(memes.id));
+
+        let again = library.import(paths, Some(stream.id)).remove(0);
+        assert!(again.duplicate);
+        assert_eq!(again.sound.unwrap().category_id, Some(memes.id));
+
+        // A category deleted in the meantime means no category, not a dangling one.
+        let later = directory.join("clap.wav");
+        fs::write(&later, wav(&[2])).unwrap();
+        let clap = library.import(vec![later], Some(stream.id + 100))[0]
+            .sound
+            .clone()
+            .unwrap();
+        assert_eq!(clap.category_id, None);
+    }
+
+    #[test]
+    fn deleting_a_category_keeps_its_sounds_in_no_category() {
+        let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[1]))]);
+        let memes = library.create_category("Memes").unwrap();
+        let horn = library.import(paths, None)[0].sound.clone().unwrap();
+
+        assert_eq!(
+            library
+                .set_category(horn.id, Some(memes.id))
+                .unwrap()
+                .category_id,
+            Some(memes.id)
+        );
+        assert!(library.set_category(horn.id, Some(memes.id + 100)).is_err());
+
+        library.delete_category(memes.id).unwrap();
+        assert!(library.categories().unwrap().is_empty());
+        assert_eq!(library.get(horn.id).unwrap().category_id, None);
+        assert!(library.delete_category(memes.id).is_err());
+    }
+
+    #[test]
     fn edits_are_saved_and_clamped() {
         let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[7]))]);
-        let id = library.import(paths)[0].sound.clone().unwrap().id;
+        let id = library.import(paths, None)[0].sound.clone().unwrap().id;
 
         assert_eq!(library.rename(id, "  Air horn  ").unwrap().name, "Air horn");
         assert!(library.rename(id, "   ").is_err());
@@ -687,7 +893,7 @@ mod tests {
     fn a_hotkey_is_saved_cleared_and_never_shared() {
         let (library, _, paths) =
             library_with_files(&[("horn.wav", wav(&[11])), ("drum.wav", wav(&[12]))]);
-        let results = library.import(paths);
+        let results = library.import(paths, None);
         let horn = results[0].sound.clone().unwrap().id;
         let drum = results[1].sound.clone().unwrap().id;
 
@@ -715,7 +921,7 @@ mod tests {
     #[test]
     fn app_shortcuts_and_pads_never_share_a_hotkey() {
         let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[13]))]);
-        let horn = library.import(paths)[0].sound.clone().unwrap().id;
+        let horn = library.import(paths, None)[0].sound.clone().unwrap().id;
         let stop_all = AppShortcut::StopAll;
         let popover = AppShortcut::TogglePopover;
         assert_eq!(library.app_hotkey(stop_all).unwrap(), None);
@@ -798,12 +1004,14 @@ mod tests {
         assert_eq!(sounds.len(), 1);
         assert_eq!(sounds[0].name, "old");
         assert_eq!(sounds[0].hotkey, None);
+        assert_eq!(sounds[0].category_id, None);
+        assert!(library.categories().unwrap().is_empty());
     }
 
     #[test]
     fn deleting_removes_the_row_and_the_stored_file() {
         let (library, directory, paths) = library_with_files(&[("horn.wav", wav(&[8]))]);
-        let id = library.import(paths)[0].sound.clone().unwrap().id;
+        let id = library.import(paths, None)[0].sound.clone().unwrap().id;
 
         library.delete(id).unwrap();
         assert!(library.list().unwrap().is_empty());
@@ -815,7 +1023,11 @@ mod tests {
     #[test]
     fn the_stored_copy_plays_after_the_original_is_gone() {
         let (library, _, paths) = library_with_files(&[("horn.wav", wav(&[9, 9]))]);
-        let id = library.import(paths.clone())[0].sound.clone().unwrap().id;
+        let id = library.import(paths.clone(), None)[0]
+            .sound
+            .clone()
+            .unwrap()
+            .id;
         fs::remove_file(&paths[0]).unwrap();
 
         let data = library.load(id).unwrap();
@@ -829,7 +1041,7 @@ mod tests {
         fs::write(&source, wav(&[10])).unwrap();
         {
             let library = Library::open(&directory.join("library")).unwrap();
-            library.import(vec![source]);
+            library.import(vec![source], None);
         }
         let reopened = Library::open(&directory.join("library")).unwrap();
         assert_eq!(reopened.list().unwrap().len(), 1);

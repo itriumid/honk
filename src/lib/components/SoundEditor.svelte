@@ -59,6 +59,20 @@
     />
   </label>
 
+  <select
+    aria-label="Category"
+    value={sound.category_id ?? ""}
+    onchange={(event) => {
+      const value = event.currentTarget.value;
+      attempt(() => library.setCategory(sound.id, value === "" ? null : Number(value)));
+    }}
+  >
+    <option value="">No category</option>
+    {#each library.categories as category (category.id)}
+      <option value={category.id}>{category.name}</option>
+    {/each}
+  </select>
+
   <div class="hotkey">
     <HotkeyRecorder
       hotkey={sound.hotkey}
@@ -113,6 +127,15 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-1);
+  }
+
+  select {
+    padding: var(--space-2);
+    background: var(--elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
   }
 
   input[type="range"] {
