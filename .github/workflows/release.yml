@@ -103,15 +103,18 @@ jobs:
             runner: ubuntu-22.04-arm
           - name: Windows
             runner: windows-latest
+            portable: x64
           # Cross-compiled on the x64 runner, which has the 32-bit MSVC toolchain.
           - name: Windows, 32-bit
             runner: windows-latest
             rust-targets: i686-pc-windows-msvc
             arguments: --target i686-pc-windows-msvc
+            portable: x86
           # NSIS only: WiX, which builds the .msi, can't make ARM64 installers.
           - name: Windows, ARM
             runner: windows-11-arm
             arguments: --bundles nsis
+            portable: arm64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -155,6 +158,35 @@ jobs:
           uploadUpdaterJson: false
           uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
 
+      # The bare executable, for running Honk without installing it. tauri-action can upload it
+      # (uploadPlainBinary), but names it without the version and uploads a bare binary for macOS
+      # and Linux too, where it isn't runnable on its own; so it's renamed and uploaded here.
+      - name: Upload the portable executable
+        if: matrix.portable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release-id }}
+          # With --target, Cargo puts the build under target/<triple>/ instead of target/.
+          BINARY: src-tauri/target/${{ matrix.rust-targets && format('{0}/', matrix.rust-targets) || '' }}release/honk.exe
+          ARCH: ${{ matrix.portable }}
+        run: |
+          if [ ! -f "$BINARY" ]; then
+            echo "::error::$BINARY wasn't built."
+            exit 1
+          fi
+          if [ -z "$RELEASE_ID" ]; then
+            echo "Dry run: $BINARY was built, and isn't uploaded."
+            exit 0
+          fi
+          # By release ID, like tauri-action: looking the draft up by its tag isn't reliable.
+          name="Honk_${TAG#v}_${ARCH}-portable.exe"
+          curl --fail-with-body --silent --show-error --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+            --data-binary "@$BINARY" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name" \
+            > /dev/null
+
   # Every build job passing doesn't prove anything was attached: a job that uploads nothing
   # still succeeds. So the release itself is checked for every installer.
   verify:
@@ -178,6 +210,7 @@ jobs:
           for pattern in \
             '_universal\.dmg$' \
             '_x64_en-US\.msi$' '_x64-setup\.exe$' '_x86_en-US\.msi$' '_x86-setup\.exe$' '_arm64-setup\.exe$' \
+            '_x64-portable\.exe$' '_x86-portable\.exe$' '_arm64-portable\.exe$' \
             '_amd64\.deb$' '\.x86_64\.rpm$' '_amd64\.AppImage$' \
             '_arm64\.deb$' '\.aarch64\.rpm$' '_aarch64\.AppImage$'; do
             if ! grep -Eq "$pattern" <<< "$names"; then

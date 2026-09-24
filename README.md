@@ -20,6 +20,7 @@ Download the installer for your system from the latest release on the [Releases 
 | Windows 10 or 11 | `Honk_<version>_x64-setup.exe` | Or the `.msi`, if you'd rather manage it with Group Policy |
 | Windows 10, 32-bit | `Honk_<version>_x86-setup.exe` | Or the `x86` `.msi`. From the release after 0.1.0 |
 | Windows on ARM | `Honk_<version>_arm64-setup.exe` | No `.msi` for ARM. From the release after 0.1.0 |
+| Windows, without installing | `Honk_<version>_x64-portable.exe` (or `x86`, `arm64`) | Needs Microsoft Edge WebView2, which Windows 11 includes. Your library is still stored in your user folder. From the release after 0.1.0 |
 | Linux (Debian, Ubuntu and derivatives) | `Honk_<version>_amd64.deb` | |
 | Linux (Fedora, openSUSE and derivatives) | `Honk-<version>-1.x86_64.rpm` | |
 | Linux (anything else) | `Honk_<version>_amd64.AppImage` | `chmod +x` it, then run it |
