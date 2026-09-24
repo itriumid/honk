@@ -26,6 +26,25 @@ interface ImportResult {
 /** App-wide shortcuts, as opposed to one per pad. */
 export type AppShortcut = "stop_all" | "toggle_popover";
 
+/** What importing a `.honk` file would do; see `sharing::Preview` in Rust. */
+export interface LibraryFilePreview {
+  made_with: string;
+  sounds: number;
+  new_sounds: number;
+  duplicates: number;
+  uncategorized: number;
+  categories: { name: string; merges: boolean; sounds: number }[];
+  hotkeys: { hotkey: string; sound: string; taken_by: string | null; repeated: boolean }[];
+}
+
+export interface LibraryFileReport {
+  added: number;
+  lands_in: number | null;
+  duplicates: number;
+  hotkeys_assigned: number;
+  hotkeys_skipped: number;
+}
+
 export interface ImportSummary {
   imported: number;
   duplicates: number;
@@ -127,6 +146,29 @@ class Library {
       sound.category_id === id ? { ...sound, category_id: null } : sound,
     );
     if (this.activeCategoryId === id) this.activeCategoryId = null;
+  }
+
+  /** Writes the library, or only `categoryId`, to a `.honk` file. */
+  exportTo(path: string, categoryId: number | null) {
+    return invoke<{ sounds: number; categories: number }>("export_library", { path, categoryId });
+  }
+
+  previewFile(path: string) {
+    return invoke<LibraryFilePreview>("preview_library_file", { path });
+  }
+
+  /** Imports a `.honk` file, then shows where its sounds landed. */
+  async importFile(path: string, importHotkeys: boolean, replace: string[]) {
+    const report = await invoke<LibraryFileReport>("import_library_file", {
+      path,
+      importHotkeys,
+      replace,
+    });
+    await this.refresh();
+    // The file decides where sounds go, so the view moves to them: their one category, or
+    // everything when they're spread out.
+    if (report.added) this.activeCategoryId = report.lands_in;
+    return report;
   }
 
   /** Moves a pad to `index` in the list. Only local until `saveOrder`, so a drag can preview. */
