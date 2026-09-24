@@ -38,12 +38,15 @@ jobs:
         include:
           - name: macOS
             runner: macos-latest
+            installers: macos/Honk.app dmg/*.dmg
           - name: Linux
             # The oldest supported Ubuntu, so the bundles link against a glibc old enough to run
             # on most distributions. Kept in step with release.yml.
             runner: ubuntu-22.04
+            installers: deb/*.deb rpm/*.rpm appimage/*.AppImage
           - name: Windows
             runner: windows-latest
+            installers: msi/*.msi nsis/*-setup.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -92,3 +95,19 @@ jobs:
       - name: Bundle the app
         run: pnpm tauri build --debug
 
+      # A bundle step that silently does nothing still exits 0, so check its output exists.
+      - name: Check every installer was built
+        working-directory: src-tauri/target/debug/bundle
+        env:
+          INSTALLERS: ${{ matrix.installers }}
+        run: |
+          status=0
+          for pattern in $INSTALLERS; do
+            if compgen -G "$pattern" > /dev/null; then
+              ls -ld $pattern
+            else
+              echo "::error::No installer matches $pattern"
+              status=1
+            fi
+          done
+          exit $status
