@@ -58,7 +58,9 @@ jobs:
           exit $status
 
       # Created once here rather than by each build job, which would race to create it and could
-      # leave duplicate drafts.
+      # leave duplicate drafts. The ID comes from the creation response itself: a draft that was
+      # just created doesn't reliably show up in the release list yet, and a missing ID makes
+      # the build jobs skip uploading while still passing.
       - name: Create the draft release
         id: release
         if: github.ref_type == 'tag'
@@ -66,9 +68,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" --draft --verify-tag --generate-notes --title "Honk $TAG"
-          # Draft releases aren't addressable by tag, so find this one's ID from the list.
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$TAG\" and .draft) | .id" | head -n 1)
+          id=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$TAG" -f name="Honk $TAG" -F draft=true -F generate_release_notes=true \
+            --jq .id)
+          if ! [[ "$id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Creating the draft release returned no ID."
+            exit 1
+          fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   build:
@@ -135,3 +141,31 @@ jobs:
           # Honk has no auto-updater, so there's no update manifest to publish.
           uploadUpdaterJson: false
           uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+
+  # Every build job passing doesn't prove anything was attached: a job that uploads nothing
+  # still succeeds. So the release itself is checked for every installer.
+  verify:
+    name: Check the release has every installer
+    needs: [prepare, build]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Only read here, but GitHub shows draft releases only to tokens with push access.
+      contents: write
+    steps:
+      - name: Check the attached files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release-id }}
+        run: |
+          names=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate --jq '.[].name')
+          echo "$names"
+          status=0
+          for pattern in '_universal\.dmg$' '_x64_en-US\.msi$' '_x64-setup\.exe$' '_amd64\.deb$' '\.x86_64\.rpm$' '_amd64\.AppImage$'; do
+            if ! grep -Eq "$pattern" <<< "$names"; then
+              echo "::error::The release has no file matching $pattern"
+              status=1
+            fi
+          done
+          exit $status
