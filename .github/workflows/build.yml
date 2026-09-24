@@ -31,6 +31,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      # Full debug info makes the debug binary large enough that packing it into an .rpm took
+      # over twelve minutes. Nothing here runs a debugger; line numbers in panics are kept.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       # One operating system failing says nothing about the others; let them all finish.
       fail-fast: false
