@@ -107,11 +107,13 @@ Maintainers only.
    higher than the current version. Land the four files through a pull request, like any other
    change.
 
-2. Tag the merge commit on `main` and push the tag:
+2. Tag the merge commit on `main` and push the tag. Release tags are annotated, so they record
+   who tagged them and when, and so they also work when git is set to sign tags
+   (`tag.gpgSign`), which needs a message:
 
    ```sh
    git switch main && git pull
-   git tag v0.2.0
+   git tag -a v0.2.0 -m "Honk 0.2.0"
    git push origin v0.2.0
    ```
 
