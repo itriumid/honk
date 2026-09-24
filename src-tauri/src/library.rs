@@ -231,6 +231,38 @@ impl Library {
         )
     }
 
+    /// Puts the library in the order of `ids`, which must name every sound exactly once. A list
+    /// that doesn't — the library changed since the caller last listed it — is refused, and the
+    /// order is left as it was.
+    pub fn reorder(&self, ids: &[i64]) -> Result<(), String> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        let mut current = transaction
+            .prepare("SELECT id FROM sounds")
+            .map_err(database_error)?
+            .query_map([], |row| row.get::<_, i64>(0))
+            .map_err(database_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+        let mut requested = ids.to_vec();
+        current.sort_unstable();
+        requested.sort_unstable();
+        if current != requested {
+            return Err("the library changed while reordering; try again".to_string());
+        }
+        {
+            let mut statement = transaction
+                .prepare("UPDATE sounds SET position = ?2 WHERE id = ?1")
+                .map_err(database_error)?;
+            for (position, id) in ids.iter().enumerate() {
+                statement
+                    .execute(params![id, position as i64])
+                    .map_err(database_error)?;
+            }
+        }
+        transaction.commit().map_err(database_error)
+    }
+
     /// Removes the sound and its stored file.
     pub fn delete(&self, id: i64) -> Result<(), String> {
         let file_name = self.file_name(id)?;
@@ -584,6 +616,57 @@ mod tests {
             .map(|sound| sound.name)
             .collect();
         assert_eq!(names, ["c", "a", "b"]);
+    }
+
+    fn names(library: &Library) -> Vec<String> {
+        library
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|sound| sound.name)
+            .collect()
+    }
+
+    #[test]
+    fn reordering_saves_the_new_order_and_new_imports_go_last() {
+        let (library, directory, paths) = library_with_files(&[
+            ("a.wav", wav(&[1])),
+            ("b.wav", wav(&[2])),
+            ("c.wav", wav(&[3])),
+        ]);
+        let ids: Vec<_> = library
+            .import(paths)
+            .into_iter()
+            .map(|result| result.sound.unwrap().id)
+            .collect();
+
+        library.reorder(&[ids[2], ids[0], ids[1]]).unwrap();
+        assert_eq!(names(&library), ["c", "a", "b"]);
+
+        let later = directory.join("d.wav");
+        fs::write(&later, wav(&[4])).unwrap();
+        library.import(vec![later]);
+        assert_eq!(names(&library), ["c", "a", "b", "d"]);
+    }
+
+    #[test]
+    fn a_reorder_that_does_not_match_the_library_changes_nothing() {
+        let (library, _, paths) =
+            library_with_files(&[("a.wav", wav(&[1])), ("b.wav", wav(&[2]))]);
+        let ids: Vec<_> = library
+            .import(paths)
+            .into_iter()
+            .map(|result| result.sound.unwrap().id)
+            .collect();
+
+        for stale in [
+            vec![ids[1]],
+            vec![ids[1], ids[0], ids[0] + ids[1]],
+            vec![ids[1], ids[1]],
+        ] {
+            assert!(library.reorder(&stale).is_err(), "{stale:?} should be refused");
+            assert_eq!(names(&library), ["a", "b"]);
+        }
     }
 
     #[test]
