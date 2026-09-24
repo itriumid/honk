@@ -2,7 +2,13 @@
 
 A lightweight, cross-platform soundboard built with Tauri. Import your sounds, bind them to global hotkeys, and fire them from a macOS menu bar popover without leaving whatever you're doing.
 
-> Early development. No release has been published yet; when one is, it'll be on the [Releases page](https://github.com/itriumid/honk/releases).
+> Early days: [the latest release](https://github.com/itriumid/honk/releases/latest) works, but expect rough edges. Made by [Itrium](https://github.com/itriumid).
+
+## Privacy
+
+Honk makes no network requests of its own: no accounts, no analytics, no telemetry, no update
+checks. Your sounds and settings stay on your computer, and a `.honk` file only goes where you
+send it. The code is all here, so you can check.
 
 ## Install
 
