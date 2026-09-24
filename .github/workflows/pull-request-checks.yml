@@ -45,7 +45,7 @@ jobs:
             const marker = '<!-- branch-name-check -->';
             const convention = '`<feature|enhancement|fix|chore>/[<issue>-]<slug>`';
             const rules =
-              'https://github.com/muhammad-zakir/agent-handbook/blob/main/conventions/rules/branching.md';
+              'https://github.com/itriumid/agent-handbook/blob/main/conventions/rules/branching.md';
             const body = exempt
               ? `${marker}\n✅ \`${branch}\` is the mainline, a revert or a dependabot branch — exempt from the naming convention.`
               : passes
@@ -131,7 +131,7 @@ jobs:
                   'Found tool or vendor attribution, which the handbook forbids in anything kept:',
                   ...findings.map((finding) => `  - ${finding}`),
                   'Reword the commit (rebase, then push with --force-with-lease) or edit the pull request text, then re-run.',
-                  'Rules: https://github.com/muhammad-zakir/agent-handbook/blob/main/conventions/rules/ai-agents.md',
+                  'Rules: https://github.com/itriumid/agent-handbook/blob/main/conventions/rules/ai-agents.md',
                 ].join('\n'),
               );
             } else {

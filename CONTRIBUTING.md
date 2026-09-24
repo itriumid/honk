@@ -6,7 +6,7 @@ reading them first saves you a red pull request.
 
 ## Reporting a bug or asking for a feature
 
-Open a [GitHub Issue](https://github.com/muhammad-zakir/honk/issues). Search first, since the
+Open a [GitHub Issue](https://github.com/itriumid/honk/issues). Search first, since the
 known platform limitations are already filed. For a bug, include your OS and version, how you
 installed Honk (`.dmg`, `.exe`, `.msi`, `.deb`, `.rpm` or `.AppImage`), and the steps to
 reproduce it. Tech debt and tooling problems have their own **Technical debt** form.
@@ -39,22 +39,22 @@ colours come from the tokens in `src/app.css`, never a hard-coded hex value.
 ## Pull requests
 
 Honk follows a shared set of conventions, kept in
-[agent-handbook](https://github.com/muhammad-zakir/agent-handbook/blob/main/conventions). The parts that matter here:
+[agent-handbook](https://github.com/itriumid/agent-handbook/blob/main/conventions). The parts that matter here:
 
 - **Branch from `main`** and name the branch `<type>/[<issue>-]<slug>`, where `<type>` is one of
   `feature`, `enhancement`, `fix` or `chore`: for example `fix/12-hotkey-crash` or
   `feature/pad-reordering`. The **Branch name** check enforces it.
-  [Details and how to pick a type](https://github.com/muhammad-zakir/agent-handbook/blob/main/conventions/rules/branching.md).
+  [Details and how to pick a type](https://github.com/itriumid/agent-handbook/blob/main/conventions/rules/branching.md).
 - **Title the pull request in the imperative mood**, with no `feat:`-style prefix or trailing
   period ("Add pad reordering"). It becomes the merge commit's subject, so it's the changelog.
 - **Fill in the template**: Why, What changed, How to verify. Write `Closes #12` if it resolves
-  an issue. [More on descriptions and commits](https://github.com/muhammad-zakir/agent-handbook/blob/main/conventions/rules/pull-requests.md).
+  an issue. [More on descriptions and commits](https://github.com/itriumid/agent-handbook/blob/main/conventions/rules/pull-requests.md).
 - **Commits are kept as written.** Pull requests land as merge commits, never squashed, so
   make each commit one reviewable change with a real message. To catch up with `main`,
   rebase, don't merge it in.
 - **No tool attribution** in commits or the pull request: no `Co-Authored-By:` bot trailers, no
   "generated with". The **Commit messages** check enforces it. Using tools is fine; stamping
-  them into history isn't. [Why](https://github.com/muhammad-zakir/agent-handbook/blob/main/conventions/rules/ai-agents.md#no-self-attribution-in-anything-kept).
+  them into history isn't. [Why](https://github.com/itriumid/agent-handbook/blob/main/conventions/rules/ai-agents.md#no-self-attribution-in-anything-kept).
   If you work with an AI coding tool, point it at [`AGENTS.md`](AGENTS.md).
 
 Every pull request also has to pass **Build (macOS)**, **Build (Linux)** and **Build
