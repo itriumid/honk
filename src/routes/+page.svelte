@@ -1,13 +1,21 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import { playSound, stopAll } from "$lib/audio";
-  import { fileName, library, type AppShortcut, type ImportSummary } from "$lib/library.svelte";
+  import {
+    fileName,
+    library,
+    type AppShortcut,
+    type ImportSummary,
+    type LibraryFilePreview,
+    type LibraryFileReport,
+  } from "$lib/library.svelte";
   import { playback } from "$lib/playback.svelte";
   import CategoryBar from "$lib/components/CategoryBar.svelte";
   import DockSetting from "$lib/components/DockSetting.svelte";
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
+  import LibraryImportDialog from "$lib/components/LibraryImportDialog.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
@@ -22,6 +30,9 @@
 
   let dragging = $state(false);
   let notice = $state("");
+  /** A .honk file waiting on the import preview. */
+  let pendingLibraryFile = $state<{ path: string; preview: LibraryFilePreview } | null>(null);
+  let exportChoice: HTMLDialogElement | undefined = $state();
 
   // Pads are reordered with pointer events rather than HTML drag and drop: Tauri's native file
   // drop, which import relies on, stops HTML drag and drop from working in the Windows webview.
@@ -121,15 +132,62 @@
     }
   }
 
+  const isLibraryFile = (path: string) => path.toLowerCase().endsWith(".honk");
+
+  // Audio files are imported straight away; a .honk file is previewed first, one at a time.
   const importPaths = (paths: string[]) =>
     attempt(async () => {
-      if (paths.length) notice = describe(await library.import(paths));
+      const audio = paths.filter((path) => !isLibraryFile(path));
+      const libraryFiles = paths.filter(isLibraryFile);
+      if (audio.length) notice = describe(await library.import(audio));
+      if (libraryFiles.length) {
+        const [path] = libraryFiles;
+        pendingLibraryFile = { path, preview: await library.previewFile(path) };
+        if (libraryFiles.length > 1) {
+          notice = `Showing ${fileName(path)}; import the other .honk files one at a time.`;
+        }
+      }
+    });
+
+  function finishLibraryImport(report: LibraryFileReport | null) {
+    pendingLibraryFile = null;
+    if (!report) return;
+    const parts = [`Imported ${report.added} sound${report.added === 1 ? "" : "s"}`];
+    if (report.duplicates) parts.push(`${report.duplicates} already in the library`);
+    if (report.hotkeys_assigned) {
+      parts.push(`${report.hotkeys_assigned} hotkey${report.hotkeys_assigned === 1 ? "" : "s"}`);
+    }
+    notice = parts.join(" · ");
+  }
+
+  const activeCategory = $derived(
+    library.categories.find((category) => category.id === library.activeCategoryId) ?? null,
+  );
+
+  function startExport() {
+    // Viewing a category, you might mean just that one; ask. Otherwise it's the whole library.
+    if (activeCategory) exportChoice?.showModal();
+    else exportLibrary(null);
+  }
+
+  const exportLibrary = (categoryId: number | null) =>
+    attempt(async () => {
+      exportChoice?.close();
+      const name =
+        library.categories.find((category) => category.id === categoryId)?.name ?? "Honk library";
+      const path = await save({
+        defaultPath: `${name}.honk`,
+        filters: [{ name: "Honk library", extensions: ["honk"] }],
+      });
+      if (!path) return;
+      const summary = await library.exportTo(path, categoryId);
+      notice = `Exported ${summary.sounds} sound${summary.sounds === 1 ? "" : "s"} to ${fileName(path)}`;
     });
 
   async function pickFiles() {
     const picked = await open({
       multiple: true,
-      filters: [{ name: "Audio", extensions: AUDIO_EXTENSIONS }],
+      filters: [{ name: "Audio or Honk library", extensions: [...AUDIO_EXTENSIONS, "honk"] }],
     });
     if (picked) await importPaths(picked);
   }
@@ -184,6 +242,7 @@
     <h1>Honk</h1>
     <div class="actions">
       <button onclick={() => attempt(stopAll)}>■ Stop all</button>
+      <button onclick={startExport} disabled={!library.sounds.length}>Export</button>
       <button class="primary" onclick={pickFiles}>+ Import</button>
     </div>
   </header>
@@ -259,6 +318,26 @@
     <ThemeSwitcher />
   </footer>
 
+  {#if pendingLibraryFile}
+    <LibraryImportDialog
+      path={pendingLibraryFile.path}
+      preview={pendingLibraryFile.preview}
+      onclose={finishLibraryImport}
+    />
+  {/if}
+
+  <dialog class="export-choice" bind:this={exportChoice} aria-labelledby="export-title">
+    <h2 id="export-title">Export</h2>
+    <p>Share the whole library, or only the category you're viewing?</p>
+    <div class="export-buttons">
+      <button onclick={() => exportChoice?.close()}>Cancel</button>
+      <button onclick={() => exportLibrary(null)}>Whole library</button>
+      <button class="primary" onclick={() => exportLibrary(library.activeCategoryId)}>
+        Only “{activeCategory?.name}”
+      </button>
+    </div>
+  </dialog>
+
   {#if dragging}
     <div class="drop" aria-hidden="true">Drop to import</div>
   {/if}
@@ -323,6 +402,39 @@
     background: var(--accent);
     color: var(--on-accent);
     border-color: transparent;
+  }
+
+  button:disabled {
+    opacity: 0.5;
+  }
+
+  .export-choice {
+    width: min(400px, calc(100vw - 2 * var(--space-4)));
+    padding: var(--space-4);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  .export-choice::backdrop {
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+  }
+
+  .export-choice h2 {
+    margin: 0 0 var(--space-2);
+    font-size: 15px;
+  }
+
+  .export-choice p {
+    margin: 0 0 var(--space-4);
+  }
+
+  .export-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
   }
 
   .notice {

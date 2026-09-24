@@ -9,6 +9,7 @@ use crate::hotkeys;
 use crate::library::{AppShortcut, Category, ImportResult, Library, Sound};
 use crate::output_devices::{self, OutputDevice};
 use crate::popover;
+use crate::sharing;
 
 /// Stored file contents by sound id, so replaying a sound never touches the disk.
 #[derive(Default)]
@@ -156,6 +157,42 @@ pub async fn rename_category(
 #[tauri::command]
 pub async fn delete_category(library: State<'_, Library>, id: i64) -> Result<(), String> {
     library.delete_category(id)
+}
+
+/// Writes the library, or only `category_id`, to a `.honk` file at `path`.
+#[tauri::command]
+pub async fn export_library(
+    library: State<'_, Library>,
+    path: PathBuf,
+    category_id: Option<i64>,
+) -> Result<sharing::ExportSummary, String> {
+    sharing::export(&library, category_id, &path)
+}
+
+/// What importing the `.honk` file at `path` would do. Nothing is written.
+#[tauri::command]
+pub async fn preview_library_file(
+    library: State<'_, Library>,
+    path: PathBuf,
+) -> Result<sharing::Preview, String> {
+    sharing::preview(&library, &path)
+}
+
+/// Imports the `.honk` file at `path`; see `sharing::import` for how hotkeys are handled.
+#[tauri::command]
+pub async fn import_library_file(
+    app: AppHandle,
+    library: State<'_, Library>,
+    path: PathBuf,
+    import_hotkeys: bool,
+    replace: Vec<String>,
+) -> Result<sharing::ImportReport, String> {
+    let replace = replace.into_iter().collect();
+    let report = sharing::import(&library, &path, import_hotkeys, &replace)?;
+    if report.hotkeys_assigned > 0 {
+        hotkeys::register_all(&app)?;
+    }
+    Ok(report)
 }
 
 /// Saves the pad order: `ids` lists every sound, first to last.
