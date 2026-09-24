@@ -1,0 +1,123 @@
+<!doctype html>
+<!--
+  GitHub's social preview card, 1280×640. Render it to branding/social-preview.png with:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars \
+      --window-size=1280,640 --screenshot=branding/social-preview.png branding/social-preview.html
+
+  then upload the PNG in the repository's Settings → General → Social preview.
+  Colours are the tokens from the README's Design section.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 640px;
+        background: radial-gradient(circle at 24% 50%, #343434, #2b2b2b 55%);
+        color: #f2f2f2;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+
+      .card {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        gap: 72px;
+        height: 100%;
+        /* GitHub asks for at least 40 pt of margin; this keeps well inside it. */
+        padding: 0 96px;
+      }
+
+      /* The tile is graphite on graphite, so it's lifted with a shadow and a faint rim. */
+      .icon {
+        flex: none;
+        width: 340px;
+        height: 340px;
+        filter: drop-shadow(0 0 1.5px rgb(255 255 255 / 0.22)) drop-shadow(0 22px 40px rgb(0 0 0 / 0.55));
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 136px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+
+      .tagline {
+        margin: 20px 0 44px;
+        color: #9a9a9a;
+        font-size: 34px;
+        line-height: 1.3;
+      }
+
+      .pads {
+        display: flex;
+        gap: 18px;
+      }
+
+      .pad {
+        position: relative;
+        overflow: hidden;
+        box-sizing: border-box;
+        width: 132px;
+        height: 132px;
+        padding: 16px;
+        display: flex;
+        align-items: flex-end;
+        background: #343434;
+        border: 2px solid #474747;
+        border-radius: 22px;
+        font-size: 22px;
+        font-weight: 500;
+      }
+
+      .pad kbd {
+        position: absolute;
+        top: 12px;
+        left: 16px;
+        color: #9a9a9a;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .pad.playing {
+        border-color: #febfca;
+      }
+
+      /* A pad partway through playing, like the app's playback fill. */
+      .pad.playing::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: 62%;
+        background: color-mix(in srgb, #febfca 45%, transparent);
+      }
+
+      .pad span {
+        position: relative;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="icon" src="icon.svg" alt="" />
+      <div>
+        <h1>Honk</h1>
+        <p class="tagline">A lightweight soundboard for<br />macOS, Windows and Linux</p>
+        <div class="pads">
+          <div class="pad"><kbd>⌥1</kbd><span>Air horn</span></div>
+          <div class="pad playing"><kbd>⌥2</kbd><span>Bruh</span></div>
+          <div class="pad"><kbd>⌥3</kbd><span>Wow</span></div>
+          <div class="pad"><kbd>⌥4</kbd><span>Applause</span></div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Honk's app icon. The horn is the tray glyph (src-tauri/icons/tray-template.png) scaled
+       up; the tile follows Apple's grid: an 824 px rounded square centred on a 1024 canvas. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#363636"/>
+      <stop offset="1" stop-color="#2B2B2B"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <g fill="#FEBFCA" stroke="#FEBFCA" stroke-width="24" stroke-linejoin="round">
+    <!-- Mouthpiece -->
+    <rect x="214" y="470" width="104" height="84" rx="10"/>
+    <!-- Bell, flaring to the right like a horn -->
+    <path d="M 306 470 C 470 462 580 400 640 290 L 640 734 C 580 624 470 562 306 554 Z"/>
+  </g>
+  <g fill="none" stroke="#FEBFCA" stroke-width="36" stroke-linecap="round">
+    <path d="M 716 434 A 110 110 0 0 1 716 590"/>
+    <path d="M 776 366 A 200 200 0 0 1 776 658"/>
+  </g>
+</svg>
