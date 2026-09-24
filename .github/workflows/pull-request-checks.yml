@@ -103,7 +103,7 @@ jobs:
             const vendors = /\b(claude|anthropic|openai|chatgpt|gpt-?\d|copilot|gemini|windsurf)\b/i;
             const attribution = [
               { pattern: /^co-authored-by:.*(\[bot\]|noreply@(anthropic|openai)\.com)/im, reason: 'a bot co-author trailer' },
-              { pattern: /generated with/i, reason: '"generated with"' },
+              { pattern: /\bgenerated with/i, reason: '"generated with"' },
               { pattern: /🤖/u, reason: 'a robot emoji' },
             ];
 
