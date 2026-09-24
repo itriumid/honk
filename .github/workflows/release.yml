@@ -14,6 +14,11 @@ on:
 # Any `permissions:` block replaces the default token scopes, so grant per job.
 permissions: {}
 
+# PowerShell on Windows let `pnpm` return before it finished; see build.yml.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   prepare:
     name: Prepare release

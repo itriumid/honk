@@ -17,6 +17,13 @@ concurrency:
 # Any `permissions:` block replaces the default token scopes, so grant per job.
 permissions: {}
 
+# Windows runners default to PowerShell, where `pnpm` returned immediately with no output and
+# exit code 0 while its work carried on in the background — every pnpm step silently did
+# nothing. Bash (Git Bash on Windows) waits for it and sees its exit code.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: Build (${{ matrix.name }})
@@ -24,6 +31,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      # Full debug info makes the debug binary large enough that packing it into an .rpm took
+      # over twelve minutes. Nothing here runs a debugger; line numbers in panics are kept.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       # One operating system failing says nothing about the others; let them all finish.
       fail-fast: false
@@ -31,12 +42,15 @@ jobs:
         include:
           - name: macOS
             runner: macos-latest
+            installers: macos/Honk.app dmg/*.dmg
           - name: Linux
             # The oldest supported Ubuntu, so the bundles link against a glibc old enough to run
             # on most distributions. Kept in step with release.yml.
             runner: ubuntu-22.04
+            installers: deb/*.deb rpm/*.rpm appimage/*.AppImage
           - name: Windows
             runner: windows-latest
+            installers: msi/*.msi nsis/*-setup.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -84,3 +98,20 @@ jobs:
       # format, which is what catches a broken installer before a release does.
       - name: Bundle the app
         run: pnpm tauri build --debug
+
+      # A bundle step that silently does nothing still exits 0, so check its output exists.
+      - name: Check every installer was built
+        working-directory: src-tauri/target/debug/bundle
+        env:
+          INSTALLERS: ${{ matrix.installers }}
+        run: |
+          status=0
+          for pattern in $INSTALLERS; do
+            if compgen -G "$pattern" > /dev/null; then
+              ls -ld $pattern
+            else
+              echo "::error::No installer matches $pattern"
+              status=1
+            fi
+          done
+          exit $status
