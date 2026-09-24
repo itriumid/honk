@@ -48,9 +48,23 @@ jobs:
             # on most distributions. Kept in step with release.yml.
             runner: ubuntu-22.04
             installers: deb/*.deb rpm/*.rpm appimage/*.AppImage
+          - name: Linux, ARM
+            runner: ubuntu-22.04-arm
+            installers: deb/*.deb rpm/*.rpm appimage/*.AppImage
           - name: Windows
             runner: windows-latest
             installers: msi/*.msi nsis/*-setup.exe
+          # Cross-compiled; 32-bit programs run on 64-bit Windows, so its tests still run.
+          - name: Windows, 32-bit
+            runner: windows-latest
+            target: i686-pc-windows-msvc
+            installers: msi/*.msi nsis/*-setup.exe
+          # A native ARM runner, so the tests run too. NSIS only: WiX, which builds the .msi,
+          # can't make ARM64 installers.
+          - name: Windows, ARM
+            runner: windows-11-arm
+            bundles: nsis
+            installers: nsis/*-setup.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -74,10 +88,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable
+          targets: ${{ matrix.target }}
 
+      # Keyed per target: jobs on the same runner OS would otherwise share one cache and
+      # overwrite each other's, leaving all but one to compile from scratch.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.name }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -92,19 +110,26 @@ jobs:
 
       - name: Test the Rust side
         working-directory: src-tauri
-        run: cargo test --locked
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo test --locked ${TARGET:+--target "$TARGET"}
 
       # A debug build reuses what `cargo test` already compiled and still produces every bundle
       # format, which is what catches a broken installer before a release does.
       - name: Bundle the app
-        run: pnpm tauri build --debug
+        env:
+          TARGET: ${{ matrix.target }}
+          BUNDLES: ${{ matrix.bundles }}
+        run: pnpm tauri build --debug ${TARGET:+--target "$TARGET"} ${BUNDLES:+--bundles "$BUNDLES"}
 
       # A bundle step that silently does nothing still exits 0, so check its output exists.
       - name: Check every installer was built
-        working-directory: src-tauri/target/debug/bundle
         env:
+          TARGET: ${{ matrix.target }}
           INSTALLERS: ${{ matrix.installers }}
         run: |
+          # A cross-compiled build lands under its target's own directory.
+          cd "src-tauri/target/${TARGET:+$TARGET/}debug/bundle"
           status=0
           for pattern in $INSTALLERS; do
             if compgen -G "$pattern" > /dev/null; then
