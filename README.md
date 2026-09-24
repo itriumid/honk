@@ -21,7 +21,8 @@ Download the installer for your system from the latest release on the [Releases 
 Code signing certificates cost money every year, and Honk is a free hobby project, so the
 installers aren't signed by a verified developer. The app is built from this repository's source
 by [the release workflow](.github/workflows/release.yml), in public, on GitHub's own machines —
-but your operating system has no way to know that, so it asks you to confirm once.
+but your operating system has no way to know that, so it asks you to confirm once. Signing is
+tracked in [#12](https://github.com/muhammad-zakir/honk/issues/12).
 
 **macOS.** The first time you open Honk, macOS says it "could not verify Honk is free of malware"
 and only offers to move it to the Bin. To open it anyway:
@@ -52,12 +53,14 @@ check when you open the file directly.
 ### Platform notes
 
 - Honk is built and tested mainly on macOS. The Windows and Linux builds compile and bundle in CI
-  on every change, but get far less hands-on use — reports are welcome.
-- The popover is designed for the macOS menu bar. On Windows and Linux it opens from the tray icon
-  as a plain window, without the translucent background. Some Linux desktops don't deliver tray
-  icon clicks to apps at all; use the popover's hotkey there instead.
+  on every change, but haven't been tried by hand yet ([#11](https://github.com/muhammad-zakir/honk/issues/11)).
+  Reports are welcome.
+- The popover is designed for the macOS menu bar. On Windows it opens from the tray icon as a
+  plain window, without the translucent background. On Linux, clicking the tray icon shows its
+  menu instead, so the popover only opens from its hotkey ([#10](https://github.com/muhammad-zakir/honk/issues/10)).
 - Global hotkeys on Linux need an X11 session. Under Wayland most compositors don't let an app
-  register system-wide shortcuts, so pad hotkeys may not fire outside the Honk window.
+  register system-wide shortcuts, so pad hotkeys may not fire outside the Honk window
+  ([#9](https://github.com/muhammad-zakir/honk/issues/9)).
 
 ## Planned features (v1)
 
@@ -102,42 +105,13 @@ Minimal, with one accent color that always means something: playing, focus, or t
 
 ## Development
 
-Requires [Rust](https://rustup.rs), Node.js, and pnpm.
+Setting up, the pull request rules, and how releases are cut are all in
+[CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 
 ```sh
 pnpm install
 pnpm tauri dev
 ```
-
-On Linux, install Tauri's [system dependencies](https://tauri.app/start/prerequisites/#linux)
-plus the ALSA headers (`libasound2-dev` on Debian and Ubuntu, `alsa-lib-devel` on Fedora).
-
-### Continuous integration
-
-Every pull request is type-checked, tested, and bundled on macOS, Linux and Windows by
-[`build.yml`](.github/workflows/build.yml). All three are required checks, so nothing reaches
-`main` without compiling everywhere.
-
-### Releasing
-
-1. Set the new version in all three places: `package.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/tauri.conf.json`. Land that through a pull request, like any other change.
-2. Tag the merge commit on `main` and push the tag:
-
-   ```sh
-   git switch main && git pull
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
-
-3. [`release.yml`](.github/workflows/release.yml) checks that the tag matches all three versions,
-   creates a **draft** release with notes generated from the merged pull requests' labels, and
-   builds the installers on each operating system, attaching them to that draft as they finish.
-4. When all three builds are green, open the draft on the Releases page, check the notes and the
-   attached files, and click **Publish release**.
-
-To try the release builds without making a release, run the **Release** workflow manually from
-the Actions tab. It builds the same installers and keeps them as workflow artifacts instead.
 
 ## License
 
