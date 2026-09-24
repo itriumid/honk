@@ -133,14 +133,31 @@ mod panel {
     }
 
     pub fn show(app: &tauri::AppHandle) {
-        if let Ok(panel) = app.get_webview_panel(super::LABEL) {
-            panel.show_and_make_key();
-        }
+        on_main_thread(app, |app| {
+            if let Ok(panel) = app.get_webview_panel(super::LABEL) {
+                panel.show_and_make_key();
+            }
+        });
     }
 
     pub fn hide(app: &tauri::AppHandle) {
-        if let Ok(panel) = app.get_webview_panel(super::LABEL) {
-            panel.hide();
+        on_main_thread(app, |app| {
+            if let Ok(panel) = app.get_webview_panel(super::LABEL) {
+                panel.hide();
+            }
+        });
+    }
+
+    /// AppKit aborts the app if a panel is touched off the main thread. Tauri's own window calls
+    /// hop there by themselves, but tauri-nspanel's don't, and async commands run on a worker
+    /// thread. On the main thread already, `work` runs straight away rather than being queued.
+    fn on_main_thread(
+        app: &tauri::AppHandle,
+        work: impl FnOnce(&tauri::AppHandle) + Send + 'static,
+    ) {
+        let handle = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || work(&handle)) {
+            eprintln!("could not reach the main thread for the popover: {error}");
         }
     }
 }
