@@ -8,6 +8,12 @@ export interface Sound {
   favorite: boolean;
   /** A global-shortcut string such as `alt+Digit1`; see `$lib/hotkey`. */
   hotkey: string | null;
+  category_id: number | null;
+}
+
+export interface Category {
+  id: number;
+  name: string;
 }
 
 interface ImportResult {
@@ -28,7 +34,10 @@ export interface ImportSummary {
 
 class Library {
   sounds = $state<Sound[]>([]);
+  categories = $state<Category[]>([]);
   selectedId = $state<number | null>(null);
+  /** The category the main window is showing, or `null` for every sound. */
+  activeCategoryId = $state<number | null>(null);
   appHotkeys = $state<Record<AppShortcut, string | null>>({
     stop_all: null,
     toggle_popover: null,
@@ -37,10 +46,17 @@ class Library {
   hotkeyFailures = $state<Record<string, string>>({});
 
   selected = $derived(this.sounds.find((sound) => sound.id === this.selectedId) ?? null);
+  /** What the main window's grid shows: the active category, or everything. */
+  visible = $derived(
+    this.activeCategoryId === null
+      ? this.sounds
+      : this.sounds.filter((sound) => sound.category_id === this.activeCategoryId),
+  );
 
   async refresh() {
-    [this.sounds, this.appHotkeys, this.hotkeyFailures] = await Promise.all([
+    [this.sounds, this.categories, this.appHotkeys, this.hotkeyFailures] = await Promise.all([
       invoke<Sound[]>("list_sounds"),
+      invoke<Category[]>("list_categories"),
       invoke<Record<AppShortcut, string | null>>("app_hotkeys"),
       invoke<Record<string, string>>("hotkey_failures"),
     ]);
@@ -61,7 +77,11 @@ class Library {
   }
 
   async import(paths: string[]): Promise<ImportSummary> {
-    const results = await invoke<ImportResult[]>("import_sounds", { paths });
+    // New sounds go in the category being shown, so they don't vanish from view on import.
+    const results = await invoke<ImportResult[]>("import_sounds", {
+      paths,
+      categoryId: this.activeCategoryId,
+    });
     await this.refresh();
     return {
       imported: results.filter((result) => result.sound && !result.duplicate).length,
@@ -82,6 +102,31 @@ class Library {
 
   async setFavorite(id: number, favorite: boolean) {
     this.replace(await invoke<Sound>("set_sound_favorite", { id, favorite }));
+  }
+
+  async setCategory(id: number, categoryId: number | null) {
+    this.replace(await invoke<Sound>("set_sound_category", { id, categoryId }));
+  }
+
+  async createCategory(name: string) {
+    const category = await invoke<Category>("create_category", { name });
+    this.categories = [...this.categories, category];
+    return category;
+  }
+
+  async renameCategory(id: number, name: string) {
+    const renamed = await invoke<Category>("rename_category", { id, name });
+    this.categories = this.categories.map((category) => (category.id === id ? renamed : category));
+  }
+
+  /** Deletes the category; its sounds stay, in no category. */
+  async deleteCategory(id: number) {
+    await invoke<void>("delete_category", { id });
+    this.categories = this.categories.filter((category) => category.id !== id);
+    this.sounds = this.sounds.map((sound) =>
+      sound.category_id === id ? { ...sound, category_id: null } : sound,
+    );
+    if (this.activeCategoryId === id) this.activeCategoryId = null;
   }
 
   /** Moves a pad to `index` in the list. Only local until `saveOrder`, so a drag can preview. */
