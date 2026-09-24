@@ -1,0 +1,26 @@
+# Dependabot's security updates are on for this repository; this file sets how their pull
+# requests look. `open-pull-requests-limit: 0` turns version updates off, so the only pull
+# requests are for vulnerabilities. Raise it to have Dependabot open routine upgrades as well.
+#
+# `type: chore` instead of Dependabot's default `dependencies` label, which label-sync.yml would
+# delete: see .handbook/conventions/reference/labels.md.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    labels: ['type: chore']
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    labels: ['type: chore']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    labels: ['type: chore']
