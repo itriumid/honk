@@ -17,6 +17,13 @@ concurrency:
 # Any `permissions:` block replaces the default token scopes, so grant per job.
 permissions: {}
 
+# Windows runners default to PowerShell, where `pnpm` returned immediately with no output and
+# exit code 0 while its work carried on in the background — every pnpm step silently did
+# nothing. Bash (Git Bash on Windows) waits for it and sees its exit code.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: Build (${{ matrix.name }})
@@ -84,3 +91,4 @@ jobs:
       # format, which is what catches a broken installer before a release does.
       - name: Bundle the app
         run: pnpm tauri build --debug
+
