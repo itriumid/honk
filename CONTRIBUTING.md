@@ -62,12 +62,51 @@ Every pull request also has to pass **Build (macOS)**, **Build (Linux)** and **B
 [`build.yml`](.github/workflows/build.yml). They also run on every push to `main`, which is
 what keeps the build cache warm for pull requests.
 
+## Versioning
+
+Honk follows [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`, tagged `v0.2.0`.
+Honk is an app, not a library, so "compatible" means what people rely on between versions:
+
+- their library: sounds, settings, hotkeys and categories
+- `.honk` files they've exported or been sent
+- the operating systems Honk runs on
+
+| Bump | When | Example |
+| --- | --- | --- |
+| **MAJOR** | Something people rely on stops working: an older library or `.honk` file no longer opens, a feature is removed, or an OS version is no longer supported | `1.4.2` → `2.0.0` |
+| **MINOR** | Anything new or improved, still compatible | `1.4.2` → `1.5.0` |
+| **PATCH** | Bug fixes only | `1.4.2` → `1.4.3` |
+
+The pull request labels since the last release decide it: any `type: feature` or
+`type: enhancement` means at least a minor bump, and only `type: bug` means a patch. A breaking
+change says so in its pull request description.
+
+While Honk is `0.x`, the major number stays at 0: a breaking change bumps **minor** instead, and
+everything else bumps **patch**. `1.0.0` is the first version with a promise of stability.
+
+Some things hold at every version, whatever the number says:
+
+- **Upgrading never loses a library.** Database changes are migrations that only add, so any
+  version opens a library made by any earlier one.
+- **No prerelease or build suffixes** such as `-beta.1` or `+build.5`. Windows installers only
+  accept numeric versions, so the release workflow refuses those tags. To try a release before
+  tagging it, use the dry run described below.
+
 ## Releasing
 
 Maintainers only.
 
-1. Set the new version in all three places: `package.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/tauri.conf.json`. Land that through a pull request, like any other change.
+1. Pick the version (see **Versioning** above), then set it everywhere it's recorded:
+
+   ```sh
+   pnpm bump-version 0.2.0
+   ```
+
+   That updates `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and
+   `src-tauri/tauri.conf.json`. It refuses anything that isn't `MAJOR.MINOR.PATCH`, or isn't
+   higher than the current version. Land the four files through a pull request, like any other
+   change.
+
 2. Tag the merge commit on `main` and push the tag:
 
    ```sh
@@ -76,12 +115,12 @@ Maintainers only.
    git push origin v0.2.0
    ```
 
-3. [`release.yml`](.github/workflows/release.yml) checks that the tag matches all three versions,
-   creates a **draft** release with notes generated from the merged pull requests' labels, and
-   builds the installers on each operating system, attaching them to that draft as they finish.
+3. [`release.yml`](.github/workflows/release.yml) checks that the tag is `vMAJOR.MINOR.PATCH` and
+   matches the app's version, creates a **draft** release with notes generated from the merged
+   pull requests' labels, and builds the installers on each operating system, attaching them to
+   that draft as they finish.
 4. When all three builds are green, open the draft on the Releases page, check the notes and the
    attached files, and click **Publish release**.
 
 To try the release builds without making a release, run the **Release** workflow manually from
 the Actions tab. It builds the same installers and keeps them as workflow artifacts instead.
-

@@ -31,13 +31,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The version lives in three files; a tag that disagrees with any of them would ship
-      # installers named and labelled with a different version than the release.
-      - name: Check the tag matches the app version
+      # Tags are vMAJOR.MINOR.PATCH, nothing else: Windows installers only take numeric
+      # versions, so a prerelease suffix would fail the Windows build partway through. And the
+      # version lives in several files; a tag that disagrees with any of them would ship
+      # installers labelled with a different version than the release.
+      - name: Check the tag is a version and matches the app
         if: github.ref_type == 'tag'
         env:
           TAG: ${{ github.ref_name }}
         run: |
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::$TAG isn't a release tag. Use vMAJOR.MINOR.PATCH, e.g. v0.2.0 (see CONTRIBUTING.md, Versioning)."
+            exit 1
+          fi
           expected="${TAG#v}"
           tauri=$(jq -r .version src-tauri/tauri.conf.json)
           node=$(jq -r .version package.json)

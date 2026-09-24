@@ -16,6 +16,11 @@ Download the installer for your system from the latest release on the [Releases 
 | Linux (Fedora, openSUSE and derivatives) | `Honk-<version>-1.x86_64.rpm` | |
 | Linux (anything else) | `Honk_<version>_amd64.AppImage` | `chmod +x` it, then run it |
 
+Versions follow [Semantic Versioning](https://semver.org), and upgrading never loses your
+library. From `1.0.0` on, only a new major version can break compatibility, such as older
+`.honk` files no longer opening. Honk is still `0.x`, where a minor version may do that, so check
+the release notes before updating.
+
 ### Honk isn't signed, so your system will warn you the first time
 
 Code signing certificates cost money every year, and Honk is a free hobby project, so the
