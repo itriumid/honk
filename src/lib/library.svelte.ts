@@ -84,6 +84,27 @@ class Library {
     this.replace(await invoke<Sound>("set_sound_favorite", { id, favorite }));
   }
 
+  /** Moves a pad to `index` in the list. Only local until `saveOrder`, so a drag can preview. */
+  move(id: number, index: number) {
+    const from = this.sounds.findIndex((sound) => sound.id === id);
+    const to = Math.max(0, Math.min(index, this.sounds.length - 1));
+    if (from === -1 || from === to) return;
+    const sounds = [...this.sounds];
+    const [sound] = sounds.splice(from, 1);
+    sounds.splice(to, 0, sound);
+    this.sounds = sounds;
+  }
+
+  /** Saves the current pad order, or puts the saved one back if that fails. */
+  async saveOrder() {
+    try {
+      await invoke<void>("reorder_sounds", { ids: this.sounds.map((sound) => sound.id) });
+    } catch (caught) {
+      await this.refresh();
+      throw caught;
+    }
+  }
+
   async delete(id: number) {
     await invoke<void>("delete_sound", { id });
     this.sounds = this.sounds.filter((sound) => sound.id !== id);

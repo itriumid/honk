@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import { playSound, stopAll } from "$lib/audio";
@@ -21,6 +21,86 @@
 
   let dragging = $state(false);
   let notice = $state("");
+
+  // Pads are reordered with pointer events rather than HTML drag and drop: Tauri's native file
+  // drop, which import relies on, stops HTML drag and drop from working in the Windows webview.
+  /** How far the pointer moves before a press on a pad becomes a drag instead of a click. */
+  const DRAG_THRESHOLD = 6;
+  /** Within this distance of the list's top or bottom edge, a drag scrolls the list. */
+  const SCROLL_EDGE = 32;
+
+  let grid = $state<HTMLElement>();
+  let list = $state<HTMLElement>();
+  let reordering = $state<{
+    id: number;
+    pad: HTMLElement;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  /** Set when a drag ends, so the click the browser fires on release doesn't play the pad. */
+  let swallowClick = false;
+
+  const padIdAt = (x: number, y: number) => {
+    const slot = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-sound-id]");
+    return slot ? Number(slot.dataset.soundId) : null;
+  };
+
+  function pressPad(id: number, event: PointerEvent & { currentTarget: HTMLElement }) {
+    // A drag whose release never arrived, because it ended outside the window, is saved now.
+    if (reordering?.moved) attempt(() => library.saveOrder());
+    reordering = null;
+    // Cleared on every press: a drag released outside the window fires no click to swallow.
+    swallowClick = false;
+    if (event.button !== 0) return;
+    reordering = {
+      id,
+      pad: event.currentTarget,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+  }
+
+  // The drag is followed on the window, not the pad: reordering moves pads around the DOM,
+  // which can drop a pad's pointer capture partway through.
+  function dragPad(event: PointerEvent) {
+    if (!reordering || event.pointerId !== reordering.pointerId) return;
+    if (!reordering.moved) {
+      const distance = Math.hypot(
+        event.clientX - reordering.startX,
+        event.clientY - reordering.startY,
+      );
+      if (distance < DRAG_THRESHOLD) return;
+      reordering.moved = true;
+      // Keeps the drag's events coming while the pointer is outside the window.
+      reordering.pad.setPointerCapture(event.pointerId);
+    }
+    const target = padIdAt(event.clientX, event.clientY);
+    if (target !== null && target !== reordering.id) {
+      library.move(
+        reordering.id,
+        library.sounds.findIndex((sound) => sound.id === target),
+      );
+    }
+    if (list) {
+      const edges = list.getBoundingClientRect();
+      if (event.clientY < edges.top + SCROLL_EDGE) list.scrollBy(0, -SCROLL_EDGE / 2);
+      else if (event.clientY > edges.bottom - SCROLL_EDGE) list.scrollBy(0, SCROLL_EDGE / 2);
+    }
+  }
+
+  function releasePad(event: PointerEvent) {
+    if (!reordering || event.pointerId !== reordering.pointerId) return;
+    const moved = reordering.moved;
+    reordering = null;
+    if (moved) {
+      swallowClick = true;
+      attempt(() => library.saveOrder());
+    }
+  }
 
   function describe(summary: ImportSummary) {
     const parts = [];
@@ -53,7 +133,23 @@
     if (picked) await importPaths(picked);
   }
 
+  /** Alt+Arrow moves the focused pad one place, for anyone not using a pointer. */
+  async function movePadWithKeyboard(id: number, event: KeyboardEvent) {
+    const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
+    if (!event.altKey || step === undefined) return;
+    event.preventDefault();
+    library.move(id, library.sounds.findIndex((sound) => sound.id === id) + step);
+    await tick();
+    // Moving a focused element in the DOM can drop its focus; put it back.
+    grid?.querySelector<HTMLElement>(`[data-sound-id="${id}"]`)?.focus();
+    await attempt(() => library.saveOrder());
+  }
+
   function play(id: number) {
+    if (swallowClick) {
+      swallowClick = false;
+      return;
+    }
     library.selectedId = id;
     attempt(() => playSound(id));
   }
@@ -76,6 +172,8 @@
   });
 </script>
 
+<svelte:window onpointermove={dragPad} onpointerup={releasePad} onpointercancel={releasePad} />
+
 <div class="app">
   <header>
     <h1>Honk</h1>
@@ -92,9 +190,18 @@
     </p>
   {/if}
 
-  <main>
+  <main bind:this={list}>
     {#if library.sounds.length}
-      <div class="grid">
+      <p id="reorder-hint" class="visually-hidden">
+        Drag a pad, or press Alt and an arrow key, to move it.
+      </p>
+      <div
+        class="grid"
+        class:reordering={reordering?.moved}
+        role="group"
+        aria-label="Sounds"
+        bind:this={grid}
+      >
         {#each library.sounds as sound (sound.id)}
           <SoundPad
             {sound}
@@ -102,6 +209,11 @@
             playing={playback.latestFor(sound.id)}
             hotkeyBroken={library.failureFor(sound.hotkey) !== null}
             onplay={() => play(sound.id)}
+            data-sound-id={sound.id}
+            lifted={reordering?.moved && reordering.id === sound.id}
+            aria-describedby="reorder-hint"
+            onpointerdown={(event) => pressPad(sound.id, event)}
+            onkeydown={(event) => movePadWithKeyboard(sound.id, event)}
           />
         {/each}
       </div>
@@ -225,6 +337,20 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
     gap: var(--space-3);
+  }
+
+  .grid.reordering {
+    cursor: grabbing;
+    user-select: none;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .empty {
