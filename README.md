@@ -12,9 +12,12 @@ Download the installer for your system from the latest release on the [Releases 
 | --- | --- | --- |
 | macOS (Apple Silicon and Intel) | `Honk_<version>_universal.dmg` | One download for every Mac |
 | Windows 10 or 11 | `Honk_<version>_x64-setup.exe` | Or the `.msi`, if you'd rather manage it with Group Policy |
+| Windows 10, 32-bit | `Honk_<version>_x86-setup.exe` | Or the `x86` `.msi`. From the release after 0.1.0 |
+| Windows on ARM | `Honk_<version>_arm64-setup.exe` | No `.msi` for ARM. From the release after 0.1.0 |
 | Linux (Debian, Ubuntu and derivatives) | `Honk_<version>_amd64.deb` | |
 | Linux (Fedora, openSUSE and derivatives) | `Honk-<version>-1.x86_64.rpm` | |
 | Linux (anything else) | `Honk_<version>_amd64.AppImage` | `chmod +x` it, then run it |
+| Linux on ARM (Raspberry Pi 4/5, ARM laptops) | `Honk_<version>_arm64.deb`, `Honk-<version>-1.aarch64.rpm` or `Honk_<version>_aarch64.AppImage` | 64-bit ARM only. From the release after 0.1.0 |
 
 Versions follow [Semantic Versioning](https://semver.org), and upgrading never loses your
 library. From `1.0.0` on, only a new major version can break compatibility, such as older
