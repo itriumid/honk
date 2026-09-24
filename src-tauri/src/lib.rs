@@ -4,6 +4,7 @@ mod hotkeys;
 mod library;
 mod output_devices;
 mod popover;
+mod sharing;
 
 use tauri::{Emitter, Manager};
 
@@ -67,6 +68,9 @@ pub fn run() {
             commands::create_category,
             commands::rename_category,
             commands::delete_category,
+            commands::export_library,
+            commands::preview_library_file,
+            commands::import_library_file,
             commands::delete_sound,
             commands::set_sound_hotkey,
             commands::app_hotkeys,
