@@ -121,6 +121,12 @@ pub async fn set_sound_favorite(
     library.set_favorite(id, favorite)
 }
 
+/// Saves the pad order: `ids` lists every sound, first to last.
+#[tauri::command]
+pub async fn reorder_sounds(library: State<'_, Library>, ids: Vec<i64>) -> Result<(), String> {
+    library.reorder(&ids)
+}
+
 #[tauri::command]
 pub async fn delete_sound(
     app: AppHandle,

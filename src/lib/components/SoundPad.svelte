@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { HTMLButtonAttributes } from "svelte/elements";
   import type { Sound } from "$lib/library.svelte";
   import { formatHotkey } from "$lib/hotkey";
   import type { ActivePlayback } from "$lib/playback.svelte";
@@ -8,18 +9,30 @@
     selected,
     playing,
     hotkeyBroken = false,
+    lifted = false,
     onplay,
-  }: {
+    ...attributes
+  }: HTMLButtonAttributes & {
     sound: Sound;
     selected: boolean;
     playing: ActivePlayback | null;
     /** The hotkey is saved but the system refused to register it. */
     hotkeyBroken?: boolean;
+    /** Being dragged to a new place; left dimmed where it will land. */
+    lifted?: boolean;
     onplay: () => void;
   } = $props();
 </script>
 
-<button class="pad" class:selected aria-pressed={selected} onclick={onplay} title={sound.name}>
+<button
+  {...attributes}
+  class="pad"
+  class:selected
+  class:lifted
+  aria-pressed={selected}
+  onclick={onplay}
+  title={sound.name}
+>
   {#if playing}
     <!-- Keyed so a replay restarts the fill instead of continuing the old one. -->
     {#key playing.playbackId}
@@ -75,6 +88,10 @@
 
   .pad.selected {
     border-color: var(--accent);
+  }
+
+  .pad.lifted {
+    opacity: 0.4;
   }
 
   /* Sits under the text, so the name stays readable while it plays. */
