@@ -66,6 +66,7 @@ check when you open the file directly.
 
 - **Local library**: drag and drop audio files; they are copied into the app's data directory so moving the originals never breaks a pad
 - **Pads** with per-sound volume, overlapping playback, and a global **Stop all**; drag a pad (or press Alt and an arrow key) to reorder
+- **Categories**: put each pad in one category (or none), and filter the main window and the popover by it
 - **Global hotkeys** per pad, plus one to open the popover
 - **Menu bar popover** (macOS): search, favorites grid, volume, stop all
 - **Share libraries**: export a whole library (or one category) as a single `.honk` file, a zip holding a `manifest.json` plus the audio files, and import one to merge it into your own
