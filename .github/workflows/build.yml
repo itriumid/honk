@@ -92,11 +92,12 @@ jobs:
           targets: ${{ matrix.target }}
 
       # Keyed per target: jobs on the same runner OS would otherwise share one cache and
-      # overwrite each other's, leaving all but one to compile from scratch.
+      # overwrite each other's, leaving all but one to compile from scratch. Not the job's
+      # name: cache keys can't contain commas.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.name }}
+          key: ${{ matrix.runner }}-${{ matrix.target }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
