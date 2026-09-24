@@ -98,8 +98,20 @@ jobs:
             # The oldest supported Ubuntu, so the bundles link against a glibc old enough to run
             # on most distributions. Kept in step with build.yml.
             runner: ubuntu-22.04
+          # Built natively rather than cross-compiled: cross-compiling GTK and WebKit is fragile.
+          - name: Linux, ARM
+            runner: ubuntu-22.04-arm
           - name: Windows
             runner: windows-latest
+          # Cross-compiled on the x64 runner, which has the 32-bit MSVC toolchain.
+          - name: Windows, 32-bit
+            runner: windows-latest
+            rust-targets: i686-pc-windows-msvc
+            arguments: --target i686-pc-windows-msvc
+          # NSIS only: WiX, which builds the .msi, can't make ARM64 installers.
+          - name: Windows, ARM
+            runner: windows-11-arm
+            arguments: --bundles nsis
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -162,7 +174,11 @@ jobs:
           names=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate --jq '.[].name')
           echo "$names"
           status=0
-          for pattern in '_universal\.dmg$' '_x64_en-US\.msi$' '_x64-setup\.exe$' '_amd64\.deb$' '\.x86_64\.rpm$' '_amd64\.AppImage$'; do
+          for pattern in \
+            '_universal\.dmg$' \
+            '_x64_en-US\.msi$' '_x64-setup\.exe$' '_x86_en-US\.msi$' '_x86-setup\.exe$' '_arm64-setup\.exe$' \
+            '_amd64\.deb$' '\.x86_64\.rpm$' '_amd64\.AppImage$' \
+            '_arm64\.deb$' '\.aarch64\.rpm$' '_aarch64\.AppImage$'; do
             if ! grep -Eq "$pattern" <<< "$names"; then
               echo "::error::The release has no file matching $pattern"
               status=1
