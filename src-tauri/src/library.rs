@@ -41,6 +41,41 @@ pub struct ImportResult {
     pub error: Option<String>,
 }
 
+/// A sound to add from bytes already in hand: a file being imported, or one inside a `.honk`.
+pub struct NewSound<'a> {
+    pub name: &'a str,
+    pub bytes: Vec<u8>,
+    /// Lowercase, without the dot. Only used to name the stored file.
+    pub extension: &'a str,
+    pub volume: f32,
+    pub favorite: bool,
+    pub category: Option<i64>,
+}
+
+/// A sound's stored file, for writing it somewhere else.
+pub struct StoredSound {
+    pub content_hash: String,
+    pub extension: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Whatever currently has a hotkey.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HotkeyHolder {
+    Sound { id: i64, name: String },
+    App(AppShortcut),
+}
+
+impl HotkeyHolder {
+    /// How an error message or a conflict list names it.
+    pub fn describe(&self) -> String {
+        match self {
+            HotkeyHolder::Sound { name, .. } => format!("\u{201c}{name}\u{201d}"),
+            HotkeyHolder::App(shortcut) => shortcut.label().to_string(),
+        }
+    }
+}
+
 pub struct Library {
     connection: Mutex<Connection>,
     sounds_directory: PathBuf,
@@ -168,7 +203,29 @@ impl Library {
 
     fn import_one(&self, path: &Path, category: Option<i64>) -> Result<(Sound, bool), String> {
         let bytes = fs::read(path).map_err(|error| format!("could not read the file: {error}"))?;
-        let content_hash = hash(&bytes);
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_lowercase)
+            .unwrap_or_else(|| "audio".to_string());
+        let name = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("Untitled");
+        self.add(NewSound {
+            name,
+            bytes,
+            extension: &extension,
+            volume: 1.0,
+            favorite: false,
+            category,
+        })
+    }
+
+    /// Adds a sound unless its audio is already in the library, in which case the existing
+    /// sound is returned untouched, with `true`. Audio that won't play is refused.
+    pub fn add(&self, new: NewSound) -> Result<(Sound, bool), String> {
+        let content_hash = hash(&new.bytes);
 
         let connection = self.connection()?;
         if let Some(existing) = find_by_hash(&connection, &content_hash)? {
@@ -176,35 +233,32 @@ impl Library {
         }
 
         // Reject anything that won't play before it takes up space in the library.
-        let sound_data: SoundData = bytes.into();
+        let sound_data: SoundData = new.bytes.into();
         audio_engine::decode(&sound_data)?;
 
-        let extension = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(str::to_lowercase)
-            .unwrap_or_else(|| "audio".to_string());
-        let file_name = format!("{content_hash}.{extension}");
+        let file_name = format!("{content_hash}.{}", new.extension);
         let stored_path = self.sounds_directory.join(&file_name);
         fs::write(&stored_path, &sound_data)
             .map_err(|error| format!("could not store the file: {error}"))?;
-
-        let name = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("Untitled")
-            .to_string();
 
         let inserted = connection
             .query_row(
                 &format!(
                     // A category deleted since the caller listed them becomes no category.
-                    "INSERT INTO sounds (name, content_hash, file_name, position, category_id)
+                    "INSERT INTO sounds
+                         (name, content_hash, file_name, position, volume, favorite, category_id)
                      VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM sounds),
-                             (SELECT id FROM categories WHERE id = ?4))
+                             ?4, ?5, (SELECT id FROM categories WHERE id = ?6))
                      RETURNING {SOUND_COLUMNS}"
                 ),
-                params![name, content_hash, file_name, category],
+                params![
+                    new.name,
+                    content_hash,
+                    file_name,
+                    new.volume.clamp(0.0, 1.0),
+                    new.favorite,
+                    new.category
+                ],
                 sound_from_row,
             )
             .map_err(database_error);
@@ -214,6 +268,27 @@ impl Library {
             let _ = fs::remove_file(&stored_path);
         }
         Ok((inserted?, false))
+    }
+
+    /// The sound already stored with these contents, if any.
+    pub fn find_by_content_hash(&self, content_hash: &str) -> Result<Option<Sound>, String> {
+        let connection = self.connection()?;
+        find_by_hash(&connection, content_hash)
+    }
+
+    /// A sound's stored file and what it's stored under.
+    pub fn stored(&self, id: i64) -> Result<StoredSound, String> {
+        let file_name = self.file_name(id)?;
+        let (content_hash, extension) = file_name
+            .split_once('.')
+            .ok_or_else(|| format!("the stored file {file_name} has no extension"))?;
+        let bytes = fs::read(self.sounds_directory.join(&file_name))
+            .map_err(|error| format!("could not read the stored sound: {error}"))?;
+        Ok(StoredSound {
+            content_hash: content_hash.to_string(),
+            extension: extension.to_string(),
+            bytes,
+        })
     }
 
     /// The stored file's contents, for playback.
@@ -283,6 +358,24 @@ impl Library {
             .collect::<Result<Vec<_>, _>>()
             .map_err(database_error)?;
         Ok(categories)
+    }
+
+    /// The category with this name, ignoring case, creating it if there isn't one.
+    pub fn category_named(&self, name: &str) -> Result<Category, String> {
+        let name = category_name(name)?;
+        let existing = self
+            .connection()?
+            .query_row(
+                "SELECT id, name FROM categories WHERE name = ?1",
+                [name],
+                category_from_row,
+            )
+            .optional()
+            .map_err(database_error)?;
+        match existing {
+            Some(category) => Ok(category),
+            None => self.create_category(name),
+        }
     }
 
     /// Names are trimmed and unique, ignoring case.
@@ -385,6 +478,42 @@ impl Library {
             }
         }
         self.update(id, "UPDATE sounds SET hotkey = ?2 WHERE id = ?1", hotkey)
+    }
+
+    /// Whatever has `hotkey` (already normalized) right now, if anything.
+    pub fn hotkey_holder(&self, hotkey: &str) -> Result<Option<HotkeyHolder>, String> {
+        let connection = self.connection()?;
+        let sound = connection
+            .query_row(
+                "SELECT id, name FROM sounds WHERE hotkey = ?1",
+                [hotkey],
+                |row| {
+                    Ok(HotkeyHolder::Sound {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(database_error)?;
+        if sound.is_some() {
+            return Ok(sound);
+        }
+        for shortcut in AppShortcut::ALL {
+            if read_setting(&connection, shortcut.setting_key())?.as_deref() == Some(hotkey) {
+                return Ok(Some(HotkeyHolder::App(shortcut)));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Takes `hotkey` away from whatever has it, so it can be given to something else.
+    pub fn release_hotkey(&self, hotkey: &str) -> Result<(), String> {
+        match self.hotkey_holder(hotkey)? {
+            Some(HotkeyHolder::Sound { id, .. }) => self.set_hotkey(id, None).map(|_| ()),
+            Some(HotkeyHolder::App(shortcut)) => self.set_app_hotkey(shortcut, None),
+            None => Ok(()),
+        }
     }
 
     pub fn app_hotkey(&self, shortcut: AppShortcut) -> Result<Option<String>, String> {
@@ -597,7 +726,7 @@ fn category_error(error: rusqlite::Error, name: &str) -> String {
     }
 }
 
-fn hash(bytes: &[u8]) -> String {
+pub(crate) fn hash(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -613,12 +742,12 @@ fn not_found(id: i64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// A fresh directory per test, so tests can run in parallel without sharing files.
-    fn scratch_directory() -> PathBuf {
+    pub(crate) fn scratch_directory() -> PathBuf {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         let directory = std::env::temp_dir().join(format!(
             "honk-library-test-{}-{}",
@@ -631,7 +760,7 @@ mod tests {
     }
 
     /// A minimal 16-bit mono PCM WAV; different `samples` give different content hashes.
-    fn wav(samples: &[i16]) -> Vec<u8> {
+    pub(crate) fn wav(samples: &[i16]) -> Vec<u8> {
         let data_length = (samples.len() * 2) as u32;
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"RIFF");
