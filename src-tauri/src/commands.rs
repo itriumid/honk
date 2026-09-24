@@ -6,7 +6,7 @@ use tauri::{AppHandle, State};
 
 use crate::audio_engine::{AudioEngine, SoundData};
 use crate::hotkeys;
-use crate::library::{AppShortcut, ImportResult, Library, Sound};
+use crate::library::{AppShortcut, Category, ImportResult, Library, Sound};
 use crate::output_devices::{self, OutputDevice};
 use crate::popover;
 
@@ -63,8 +63,9 @@ pub async fn list_sounds(library: State<'_, Library>) -> Result<Vec<Sound>, Stri
 pub async fn import_sounds(
     library: State<'_, Library>,
     paths: Vec<PathBuf>,
+    category_id: Option<i64>,
 ) -> Result<Vec<ImportResult>, String> {
-    Ok(library.import(paths))
+    Ok(library.import(paths, category_id))
 }
 
 /// Plays a library sound at its saved volume. Shared by the command and by hotkeys.
@@ -119,6 +120,42 @@ pub async fn set_sound_favorite(
     favorite: bool,
 ) -> Result<Sound, String> {
     library.set_favorite(id, favorite)
+}
+
+#[tauri::command]
+pub async fn set_sound_category(
+    library: State<'_, Library>,
+    id: i64,
+    category_id: Option<i64>,
+) -> Result<Sound, String> {
+    library.set_category(id, category_id)
+}
+
+#[tauri::command]
+pub async fn list_categories(library: State<'_, Library>) -> Result<Vec<Category>, String> {
+    library.categories()
+}
+
+#[tauri::command]
+pub async fn create_category(
+    library: State<'_, Library>,
+    name: String,
+) -> Result<Category, String> {
+    library.create_category(&name)
+}
+
+#[tauri::command]
+pub async fn rename_category(
+    library: State<'_, Library>,
+    id: i64,
+    name: String,
+) -> Result<Category, String> {
+    library.rename_category(id, &name)
+}
+
+#[tauri::command]
+pub async fn delete_category(library: State<'_, Library>, id: i64) -> Result<(), String> {
+    library.delete_category(id)
 }
 
 /// Saves the pad order: `ids` lists every sound, first to last.
