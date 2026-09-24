@@ -67,16 +67,19 @@ check when you open the file directly.
   register system-wide shortcuts, so pad hotkeys may not fire outside the Honk window
   ([#9](https://github.com/muhammad-zakir/honk/issues/9)).
 
-## Planned features (v1)
+## Features
 
 - **Local library**: drag and drop audio files; they are copied into the app's data directory so moving the originals never breaks a pad
 - **Pads** with per-sound volume, overlapping playback, and a global **Stop all**; drag a pad (or press Alt and an arrow key) to reorder
 - **Categories**: put each pad in one category (or none), and filter the main window and the popover by it
 - **Global hotkeys** per pad, plus one to open the popover
 - **Menu bar popover** (macOS): search, favorites grid, volume, stop all
-- **Share libraries**: export a whole library (or one category) as a single `.honk` file, a zip holding a `manifest.json` plus the audio files, and import one to merge it into your own
-  - Exports always include hotkeys; importing them is opt-in (off by default), and conflicts with existing bindings are shown for you to skip or replace
-  - Duplicate sounds are detected by content hash, not filename
+- **Share libraries**: export a whole library (or the category you're viewing) as a single `.honk` file, and import one, from **Import** or by dropping it on the window, to merge it into your own
+  - A preview shows what's new, what you already have, and where everything goes before anything is added
+  - Sounds keep the file's categories; one with the same name as yours, ignoring case, joins yours
+  - Sounds already in your library are matched by their audio, not their name, and left as they are
+  - Exports always include hotkeys; importing them is opt-in (off by default), and each one that's already taken is yours to skip or replace
+  - A `.honk` is a zip holding a `manifest.json` plus the audio files. Imports treat it as untrusted: every sound is size-capped, checked against its checksum, and has to play, and a single bad sound stops the whole import before anything is added
 - **Output device picker** with dual output (e.g. headphones + a virtual cable like BlackHole or VB-Cable)
 
 ## Architecture
