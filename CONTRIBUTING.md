@@ -121,7 +121,7 @@ Maintainers only.
    matches the app's version, creates a **draft** release with notes generated from the merged
    pull requests' labels, and builds the installers on each operating system, attaching them to
    that draft as they finish.
-4. When all three builds are green, open the draft on the Releases page, check the notes and the
+4. When every build is green, open the draft on the Releases page, check the notes and the
    attached files, and click **Publish release**.
 
 To try the release builds without making a release, run the **Release** workflow manually from
