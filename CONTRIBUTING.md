@@ -123,6 +123,10 @@ Maintainers only.
    that draft as they finish.
 4. When every build is green, open the draft on the Releases page, check the notes and the
    attached files, and click **Publish release**.
+5. Publishing starts [`homebrew.yml`](.github/workflows/homebrew.yml), which opens a pull request
+   on [itriumid/homebrew-tap](https://github.com/itriumid/homebrew-tap) pointing the Honk cask at
+   the new `.dmg`. Merge it there once its checks pass. If the workflow failed, run it again from
+   the Actions tab with the tag.
 
 To try the release builds without making a release, run the **Release** workflow manually from
 the Actions tab. It builds the same installers and keeps them as workflow artifacts instead.
