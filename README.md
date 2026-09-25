@@ -26,6 +26,17 @@ Download the installer for your system from the latest release on the [Releases 
 | Linux (anything else) | `Honk_<version>_amd64.AppImage` | `chmod +x` it, then run it |
 | Linux on ARM (Raspberry Pi 4/5, ARM laptops) | `Honk_<version>_arm64.deb`, `Honk-<version>-1.aarch64.rpm` or `Honk_<version>_aarch64.AppImage` | 64-bit ARM only. From the release after 0.1.0 |
 
+On a Mac with [Homebrew](https://brew.sh), you can install it from Itrium's tap instead, and
+`brew upgrade` keeps it up to date:
+
+```sh
+brew install itriumid/tap/honk
+```
+
+That installs the same `.dmg`, so the first launch still needs the steps under
+[Honk isn't signed](#honk-isnt-signed-so-your-system-will-warn-you-the-first-time). Homebrew
+prints them when the installation finishes.
+
 Versions follow [Semantic Versioning](https://semver.org), and upgrading never loses your
 library. From `1.0.0` on, only a new major version can break compatibility, such as older
 `.honk` files no longer opening. Honk is still `0.x`, where a minor version may do that, so check
