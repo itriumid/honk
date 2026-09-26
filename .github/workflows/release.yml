@@ -203,8 +203,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ needs.prepare.outputs.release-id }}
+          TAG: ${{ github.ref_name }}
         run: |
-          names=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate --jq '.[].name')
+          # Only the files named with this version count. The copies without a version, which the
+          # next job adds, would otherwise satisfy these patterns on a re-run.
+          names=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate --jq '.[].name' \
+            | grep -F "${TAG#v}" || true)
           echo "$names"
           status=0
           for pattern in \
@@ -217,5 +221,59 @@ jobs:
               echo "::error::The release has no file matching $pattern"
               status=1
             fi
+          done
+          exit $status
+
+  # A copy of each main installer without the version in its name, such as Honk_universal.dmg, so
+  # https://github.com/itriumid/honk/releases/latest/download/<name> always downloads the newest
+  # release. itrium.id/honk links to these; the versioned files stay what Homebrew and winget use.
+  stable-names:
+    name: Add copies without the version
+    needs: [prepare, verify]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Copy the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release-id }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate \
+            --jq '.[] | "\(.id) \(.name)"')
+          status=0
+          for name in \
+            "Honk_${VERSION}_universal.dmg" \
+            "Honk_${VERSION}_x64-setup.exe" "Honk_${VERSION}_x86-setup.exe" "Honk_${VERSION}_arm64-setup.exe" \
+            "Honk_${VERSION}_amd64.deb" "Honk-${VERSION}-1.x86_64.rpm" "Honk_${VERSION}_amd64.AppImage" \
+            "Honk_${VERSION}_arm64.deb" "Honk-${VERSION}-1.aarch64.rpm" "Honk_${VERSION}_aarch64.AppImage"; do
+            # Honk_0.2.0_universal.dmg becomes Honk_universal.dmg; Honk-0.2.0-1.x86_64.rpm becomes
+            # Honk.x86_64.rpm.
+            stable="${name/_${VERSION}_/_}"
+            stable="${stable/-${VERSION}-1./.}"
+            id=$(awk -v name="$name" '$2 == name { print $1 }' <<< "$assets")
+            if [ -z "$id" ]; then
+              echo "::error::The release has no $name to copy."
+              status=1
+              continue
+            fi
+            if grep -q " $stable\$" <<< "$assets"; then
+              echo "$stable is already attached."
+              continue
+            fi
+            # Downloaded by asset ID: a draft release can't be downloaded by its tag.
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$id" > "$stable"
+            curl --fail-with-body --silent --show-error --retry 3 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+              --data-binary "@$stable" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$stable" \
+              > /dev/null
+            echo "Attached $stable"
+            rm "$stable"
           done
           exit $status
