@@ -120,7 +120,9 @@ Maintainers only.
 3. [`release.yml`](.github/workflows/release.yml) checks that the tag is `vMAJOR.MINOR.PATCH` and
    matches the app's version, creates a **draft** release with notes generated from the merged
    pull requests' labels, and builds the installers on each operating system, attaching them to
-   that draft as they finish.
+   that draft as they finish. Once every installer is there, it also attaches copies of the main
+   ones without the version in their names (`Honk_universal.dmg`), which
+   [itrium.id/honk](https://itrium.id/honk) links to through `releases/latest/download/`.
 4. When every build is green, open the draft on the Releases page, check the notes and the
    attached files, and click **Publish release**.
 5. Publishing starts [`homebrew.yml`](.github/workflows/homebrew.yml), which opens a pull request
