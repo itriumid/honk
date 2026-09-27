@@ -196,11 +196,15 @@
     color: var(--muted);
   }
 
+  /* Wraps like the main window's chips, so every category is visible: a sideways-scrolling row
+     hid the ones past the edge, with nothing to say they were there. Past three rows it scrolls,
+     so a long list of categories can't squeeze the pads out. */
   .views {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-1);
-    overflow-x: auto;
-    scrollbar-width: none;
+    max-height: 76px;
+    overflow-y: auto;
   }
 
   .chip {
