@@ -125,7 +125,7 @@ Minimal, with one accent color that always means something: playing, focus, or t
 | Elevated | `#3E3E3E` | `#F1F1F1` |
 | Border | `#474747` | `#E4E4E4` |
 | Text | `#F2F2F2` | `#2B2B2B` |
-| Muted | `#9A9A9A` | `#6B6B6B` |
+| Muted | `#AAAAAA` | `#6B6B6B` |
 | Accent | `#FEBFCA` | `#FEBFCA` |
 
 - Text on the accent is always graphite (`#2B2B2B`), never white.
