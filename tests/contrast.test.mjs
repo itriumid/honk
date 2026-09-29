@@ -1,11 +1,12 @@
 // Checks that every palette in every theme meets level AA of the Web Content Accessibility
-// Guidelines: 4.5:1 for text, 3:1 for the focus outline. It reads the colors straight from
+// Guidelines: 4.5:1 for text, 3:1 for the focus outline and for accent lines that show a state
+// (a selected pad, a pressed chip, the chosen theme). It reads the colors straight from
 // src/app.css, working out which rules apply the way the browser's cascade would, so a new
 // palette or a changed color can't ship without passing. Run it with `pnpm test`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { PALETTES, DEFAULT_PALETTE } from "../src/lib/palettes.ts";
 
 const css = readFileSync(new URL("../src/app.css", import.meta.url), "utf8");
@@ -173,6 +174,9 @@ for (const { id: palette } of PALETTES) {
       }
       pairs.push(["--on-accent", "--accent", TEXT]);
       pairs.push(["--focus", "--bg", NON_TEXT], ["--focus", "--surface", NON_TEXT]);
+      for (const background of ["--bg", "--surface", "--elevated"]) {
+        pairs.push(["--accent-edge", background, NON_TEXT]);
+      }
 
       const failures = [];
       for (const [foreground, background, minimum] of pairs) {
@@ -222,3 +226,22 @@ for (const { id: palette } of PALETTES) {
     });
   }
 }
+
+// The contrast checks above only cover --accent-edge if lines actually use it, so a border,
+// outline or underline in the accent color has to name --accent-edge, not --accent.
+test("accent lines use --accent-edge", () => {
+  const source = new URL("../src/", import.meta.url);
+  const files = readdirSync(source, { recursive: true }).filter(
+    (file) => file.endsWith(".svelte") || file.endsWith(".css"),
+  );
+  const line = /(border[a-z-]*|outline[a-z-]*|text-decoration[a-z-]*|box-shadow)\s*:[^;]*var\(--accent\)/;
+  const offenders = [];
+  for (const file of files) {
+    readFileSync(new URL(file, source), "utf8")
+      .split("\n")
+      .forEach((text, index) => {
+        if (line.test(text)) offenders.push(`src/${file}:${index + 1}: ${text.trim()}`);
+      });
+  }
+  assert.deepEqual(offenders, []);
+});

@@ -456,7 +456,7 @@
     margin: var(--space-3) var(--space-4) 0;
     padding: var(--space-2) var(--space-3);
     background: var(--elevated);
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--accent-edge);
     border-radius: var(--radius-sm);
   }
 
@@ -517,7 +517,7 @@
     inset: var(--space-3);
     display: grid;
     place-content: center;
-    border: 2px dashed var(--accent);
+    border: 2px dashed var(--accent-edge);
     border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--bg) 85%, transparent);
     font-size: 15px;
