@@ -28,7 +28,7 @@ body:
     id: problem
     attributes:
       label: What's wrong now
-      description: The current shape of the code or behaviour. Paths and symbols make this findable later.
+      description: The current shape of the code or behavior. Paths and symbols make this findable later.
       placeholder: |
         e.g. `src/player.rs` decodes the same file on every play instead of caching it, and
         rapid-fire hotkeys stutter.
@@ -39,7 +39,7 @@ body:
     id: cost
     attributes:
       label: What it costs to leave alone
-      description: What this blocks, slows, or risks. Debt with no stated cost never gets prioritised over feature work.
+      description: What this blocks, slows, or risks. Debt with no stated cost never gets prioritized over feature work.
     validations:
       required: true
 
@@ -47,7 +47,7 @@ body:
     id: done
     attributes:
       label: What "done" looks like
-      description: Optional. The shape of an acceptable fix, or a boundary on it — "no schema change", "behaviour must stay identical".
+      description: Optional. The shape of an acceptable fix, or a boundary on it — "no schema change", "behavior must stay identical".
     validations:
       required: false
 

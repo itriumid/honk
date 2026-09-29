@@ -314,12 +314,12 @@ struct Display {
 fn display_holding(icon: (f64, f64, f64, f64), displays: &[Display]) -> Option<usize> {
     let (x, y, width, height) = icon;
     displays.iter().position(|display| {
-        let centre_x = (x + width / 2.0) / display.scale;
-        let centre_y = (y + height / 2.0) / display.scale;
-        centre_x >= display.screen.left
-            && centre_x < display.screen.left + display.screen.width
-            && centre_y >= display.screen.top
-            && centre_y < display.screen.top + display.height
+        let center_x = (x + width / 2.0) / display.scale;
+        let center_y = (y + height / 2.0) / display.scale;
+        center_x >= display.screen.left
+            && center_x < display.screen.left + display.screen.width
+            && center_y >= display.screen.top
+            && center_y < display.screen.top + display.height
     })
 }
 
@@ -330,7 +330,7 @@ struct Screen {
     width: f64,
 }
 
-/// Centred under the tray icon (`x, y, width, height`, physical) when there is one, otherwise at
+/// Centered under the tray icon (`x, y, width, height`, physical) when there is one, otherwise at
 /// the top right of the screen — where the menu bar icons live — and always kept on screen.
 fn place(icon: Option<(f64, f64, f64, f64)>, screen: Screen, scale: f64) -> (f64, f64) {
     let width = WIDTH * scale;
@@ -359,8 +359,8 @@ mod tests {
     };
 
     #[test]
-    fn centres_under_the_tray_icon() {
-        // A 44x48 physical icon at x=2000 on a 2x screen: its centre is x=2022.
+    fn centers_under_the_tray_icon() {
+        // A 44x48 physical icon at x=2000 on a 2x screen: its center is x=2022.
         let (x, y) = place(Some((2000.0, 0.0, 44.0, 48.0)), RETINA, 2.0);
         assert_eq!(x, 2022.0 - 320.0);
         assert_eq!(y, 48.0 + 12.0);
