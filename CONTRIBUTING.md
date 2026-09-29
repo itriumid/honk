@@ -35,7 +35,7 @@ touches one side:
 
 The README's **Architecture** and **Design** sections are the plan and the design tokens. Two
 rules there are easy to break by accident: audio plays in Rust, never in the webview, and
-colours come from the tokens in `src/app.css`, never a hard-coded hex value.
+colors come from the tokens in `src/app.css`, never a hard-coded hex value.
 
 ## Pull requests
 

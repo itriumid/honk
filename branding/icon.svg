@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <!-- Honk's app icon. The horn is the tray glyph (src-tauri/icons/tray-template.png) scaled
-       up; the tile follows Apple's grid: an 824 px rounded square centred on a 1024 canvas. -->
+       up; the tile follows Apple's grid: an 824 px rounded square centered on a 1024 canvas. -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#363636"/>

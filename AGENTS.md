@@ -41,7 +41,7 @@ Don't load them upfront; read the one that applies.
 | Noticed something outside the task's scope — a bug, tech debt, a growing diff                 | `.handbook/conventions/rules/ai-agents.md`           |
 | Unsure what an agent may write or do here (catch-all)                                         | `.handbook/conventions/rules/ai-agents.md`           |
 | Bumping a dependency or runtime version, or naming things                                     | `.handbook/conventions/rules/engineering.md`         |
-| Labelling a pull request                                                                      | `.handbook/conventions/reference/labels.md`          |
+| Labeling a pull request                                                                       | `.handbook/conventions/reference/labels.md`          |
 | Something already went wrong — a leak, a bad push, a weakened check                           | `.handbook/conventions/reference/agent-incidents.md` |
 | Wondering why a cross-project technology choice was made                                      | `.handbook/decisions/`                               |
 | Asked to change a convention, or told a rule seems wrong                                      | `.handbook/conventions/background/`                  |
@@ -57,7 +57,7 @@ and a Rust backend. The README's **Architecture** and **Design** sections are th
 truth for the plan and the design tokens — read them before building a feature.
 
 - **Audio plays in Rust, never in the webview.** Don't reach for `<audio>` or the Web Audio API.
-- **Colours come from the tokens in `src/app.css`.** Never hard-code a hex value in a component.
+- **Colors come from the tokens in `src/app.css`.** Never hard-code a hex value in a component.
   Text on `--accent` is always `--on-accent`.
 - **Hotkeys are never imported from a shared library by default** — see the README's import rules.
 
