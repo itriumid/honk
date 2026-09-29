@@ -23,12 +23,13 @@ pnpm tauri dev
 On Linux, install Tauri's [system dependencies](https://tauri.app/start/prerequisites/#linux)
 plus the ALSA headers (`libasound2-dev` on Debian and Ubuntu, `alsa-lib-devel` on Fedora).
 
-Before opening a pull request, run all three checks, even if your change only looks like it
+Before opening a pull request, run all four checks, even if your change only looks like it
 touches one side:
 
 | What | Command |
 | --- | --- |
 | Type-check the frontend | `pnpm check` |
+| Check every palette's color contrast | `pnpm test` |
 | Build the frontend | `pnpm build` |
 | Test the Rust side | `cargo test` (from `src-tauri/`) |
 

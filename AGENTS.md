@@ -68,10 +68,11 @@ truth for the plan and the design tokens — read them before building a feature
 | Install | `pnpm install` |
 | Run the app | `pnpm tauri dev` |
 | Type-check the frontend | `pnpm check` |
+| Check every palette's color contrast | `pnpm test` |
 | Build the frontend | `pnpm build` |
 | Check the Rust side | `cargo check` (from `src-tauri/`) |
 
-Before calling a change done, run `pnpm check`, `pnpm build`, and `cargo check` — all three,
+Before calling a change done, run `pnpm check`, `pnpm test`, `pnpm build`, and `cargo check` — all four,
 even for a change that only looks like it touches one side.
 
 ### Environment gotchas

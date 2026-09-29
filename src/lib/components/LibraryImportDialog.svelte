@@ -20,7 +20,7 @@
   }: {
     path: string;
     preview: LibraryFilePreview;
-    /** With the result once imported, or `null` when cancelled. */
+    /** With the result once imported, or `null` when canceled. */
     onclose: (report: LibraryFileReport | null) => void;
   } = $props();
 

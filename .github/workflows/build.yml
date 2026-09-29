@@ -105,6 +105,9 @@ jobs:
       - name: Type-check the frontend
         run: pnpm check
 
+      - name: Check color contrast
+        run: pnpm test
+
       # The Rust crate embeds the built frontend at compile time, so it has to exist before
       # `cargo test`.
       - name: Build the frontend

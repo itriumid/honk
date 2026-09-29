@@ -6,9 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Honk</title>
     <script>
+      // Applies the saved theme and palette before the first paint, so the window never
+      // flashes the default colors. src/lib/theme.svelte.ts owns these settings afterwards.
       try {
+        const root = document.documentElement;
         const theme = localStorage.getItem("honk:theme");
-        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+        const palette = localStorage.getItem("honk:palette");
+        if (/^catppuccin-(mocha|macchiato|frappe)$/.test(palette)) root.dataset.palette = palette;
       } catch {}
     </script>
     %sveltekit.head%

@@ -118,6 +118,10 @@ check when you open the file directly.
 
 Minimal, with one accent color that always means something: playing, focus, or the primary action.
 
+Honk offers four palettes under **Colors**. Rhodonite, Itrium's own, is the default. The other three are [Catppuccin](https://catppuccin.com) flavors, each paired with Catppuccin Latte in light mode. The theme (System, Light or Dark) picks the light or dark version of whichever palette is chosen.
+
+Rhodonite's tokens:
+
 | Token | Dark | Light |
 | --- | --- | --- |
 | Background | `#2B2B2B` | `#FAFAFA` |
@@ -127,9 +131,15 @@ Minimal, with one accent color that always means something: playing, focus, or t
 | Text | `#F2F2F2` | `#2B2B2B` |
 | Muted | `#AAAAAA` | `#6B6B6B` |
 | Accent | `#FEBFCA` | `#FEBFCA` |
+| Focus outline | `#FEBFCA` | `#2B2B2B` |
+| Playing tint | Accent at 35% | Accent at 45% |
 
-- Text on the accent is always graphite (`#2B2B2B`), never white.
-- In light mode the accent is used for fills only, never as text color.
+The Catppuccin palettes map Catppuccin's colors onto the same tokens: background on `base`, surfaces (pads) on `mantle`, elevated controls on `surface0`, borders on `surface1`, muted text on `subtext1`, and `pink` as the accent. All of them live in `src/app.css`.
+
+- **Every palette meets level AA** of the Web Content Accessibility Guidelines: 4.5:1 for text and muted text on every surface, for text on the accent, and for a pad's name on its playing tint; 3:1 for the focus outline. `pnpm test` checks each palette in every theme, and CI runs it, so a color that fails can't be merged.
+- Text on the accent is always the palette's dark on-accent color, never white.
+- In light mode the accent is used for fills only, never as text color, and the focus outline uses the text color instead.
+- A playing pad doesn't lighten on hover, because the tint is tuned against its normal background.
 - The popover uses native macOS vibrancy; the main window stays solid.
 - System font (SF Pro on macOS). Motion is limited to the playback fill and a subtle press.
 
