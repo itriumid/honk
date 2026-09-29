@@ -29,7 +29,7 @@ jobs:
           script: |
             // Source of truth: the handbook's conventions/reference/labels.md, "Code repositories". Palette is Catppuccin Mocha
             // (https://catppuccin.com/palette), except the status: labels, which use the brand
-            // colours: graphite and pastel pink.
+            // colors: graphite and pastel pink.
             //
             // Descriptions are capped at 100 characters — the API rejects anything longer with a
             // 422, and this job creates and updates in one pass, so one long description fails
@@ -75,7 +75,7 @@ jobs:
               }
 
               // Renaming (e.g. casing) preserves the label on existing issues and pull requests;
-              // deleting and recreating would silently drop it from anything already labelled.
+              // deleting and recreating would silently drop it from anything already labeled.
               const needsUpdate =
                 label.name !== target.name ||
                 label.color.toLowerCase() !== target.color.toLowerCase() ||
