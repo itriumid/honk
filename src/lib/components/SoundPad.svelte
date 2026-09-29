@@ -29,6 +29,7 @@
   class="pad"
   class:selected
   class:lifted
+  class:playing={playing !== null}
   aria-pressed={selected}
   onclick={onplay}
   title={sound.name}
@@ -78,7 +79,8 @@
       border-color var(--duration) var(--ease);
   }
 
-  .pad:hover {
+  /* Not while playing: the fill is tuned for contrast against the pad's normal background. */
+  .pad:hover:not(.playing) {
     background: var(--elevated);
   }
 
@@ -99,7 +101,7 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) var(--playing-strength), transparent);
     transform-origin: left;
     animation: fill linear forwards;
   }

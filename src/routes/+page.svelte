@@ -17,6 +17,7 @@
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import LibraryImportDialog from "$lib/components/LibraryImportDialog.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
+  import PalettePicker from "$lib/components/PalettePicker.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
   import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
@@ -315,7 +316,10 @@
       </div>
     {/each}
     <DockSetting onerror={(message) => (notice = message)} />
-    <ThemeSwitcher />
+    <div class="appearance">
+      <PalettePicker />
+      <ThemeSwitcher />
+    </div>
   </footer>
 
   {#if pendingLibraryFile}
@@ -368,6 +372,13 @@
 
   footer {
     border-top: 1px solid var(--border);
+  }
+
+  .appearance {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
   }
 
   .app-hotkey {
