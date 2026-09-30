@@ -135,7 +135,7 @@ Rhodonite's tokens:
 | Focus outline | `#FEBFCA` | `#2B2B2B` |
 | Playing tint | Accent at 35% | Accent at 45% |
 
-The Catppuccin palettes map Catppuccin's colors onto the same tokens: background on `base`, surfaces (pads) on `mantle`, elevated controls on `surface0`, borders on `surface1`, muted text on `subtext1`, and `pink` as the accent. Latte's accent lines use a deeper pink, `#C73EA2`. All of them live in `src/app.css`.
+The Catppuccin palettes map Catppuccin's colors onto the same tokens: background on `base`, surfaces (pads) on `mantle`, elevated controls on `surface0`, borders on `surface1`, muted text on `subtext1`, and `mauve` as the accent, the default in Catppuccin's own ports. Text on the accent is `crust` in the dark flavors and Latte's `base` in light mode. All of them live in `src/app.css`.
 
 - **Every palette meets level AA** of the Web Content Accessibility Guidelines: 4.5:1 for text and muted text on every surface, for text on the accent, and for a pad's name on its playing tint; 3:1 for the focus outline and for accent lines that show a state. `pnpm test` checks each palette in every theme, and CI runs it, so a color that fails can't be merged.
 - Text on the accent is always the palette's dark on-accent color, never white.
