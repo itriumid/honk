@@ -88,7 +88,7 @@
   }
 
   button.recording {
-    border-color: var(--accent);
+    border-color: var(--accent-edge);
   }
 
   .clear {
@@ -113,6 +113,6 @@
   .problem {
     color: var(--text);
     padding-left: var(--space-2);
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--accent-edge);
   }
 </style>

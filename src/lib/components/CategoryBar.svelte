@@ -151,7 +151,7 @@
   .chip[aria-pressed="true"] {
     background: var(--accent);
     color: var(--on-accent);
-    border-color: transparent;
+    border-color: var(--accent-edge);
   }
 
   .chip.add {
@@ -163,7 +163,7 @@
   .chip.field {
     width: 14ch;
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--accent-edge);
   }
 
   .manage button {

@@ -237,11 +237,13 @@
   .choice button[aria-checked="true"] {
     background: var(--accent);
     color: var(--on-accent);
+    /* The fill alone is too faint against light backgrounds to show which is chosen. */
+    box-shadow: inset 0 0 0 1px var(--accent-edge);
   }
 
   .error {
     padding: var(--space-2);
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--accent-edge);
     background: var(--elevated);
   }
 

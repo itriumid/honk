@@ -49,5 +49,7 @@
   button[aria-checked="true"] {
     background: var(--accent);
     color: var(--on-accent);
+    /* The fill alone is too faint against light backgrounds to show which is chosen. */
+    box-shadow: inset 0 0 0 1px var(--accent-edge);
   }
 </style>

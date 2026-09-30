@@ -89,7 +89,7 @@
   }
 
   .pad.selected {
-    border-color: var(--accent);
+    border-color: var(--accent-edge);
   }
 
   .pad.lifted {
@@ -159,7 +159,7 @@
 
   .hotkey.broken {
     text-decoration: line-through;
-    text-decoration-color: var(--accent);
+    text-decoration-color: var(--accent-edge);
   }
 
   .favorite {

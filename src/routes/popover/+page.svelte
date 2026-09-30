@@ -221,7 +221,7 @@
   .chip[aria-pressed="true"] {
     background: var(--accent);
     color: var(--on-accent);
-    border-color: transparent;
+    border-color: var(--accent-edge);
   }
 
   section {
@@ -253,7 +253,7 @@
   .error {
     margin: 0;
     padding: var(--space-2);
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--accent-edge);
     background: var(--glass);
     font-size: 12px;
   }
