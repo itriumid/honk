@@ -62,8 +62,9 @@
 
 /*
  * Catppuccin (https://catppuccin.com), adapted: each dark flavor pairs with Latte in light mode,
- * pink is the accent, and pads sit on mantle, inputs on surface0, so every pairing meets level
- * AA contrast. tests/contrast.test.mjs checks that; run `pnpm test` after changing a color.
+ * Mauve is the accent (the default in Catppuccin's own ports), and pads sit on mantle, inputs on
+ * surface0, so every pairing meets level AA contrast. tests/contrast.test.mjs checks that; run
+ * `pnpm test` after changing a color.
  */
 :root[data-palette="catppuccin-mocha"] {
   --bg: #1e1e2e;
@@ -72,11 +73,11 @@
   --border: #45475a;
   --text: #cdd6f4;
   --muted: #bac2de;
-  --accent: #f5c2e7;
-  --accent-edge: #f5c2e7;
+  --accent: #cba6f7;
+  --accent-edge: #cba6f7;
   --on-accent: #11111b;
-  --playing-strength: 35%;
-  --focus: #f5c2e7;
+  --playing-strength: 40%;
+  --focus: #cba6f7;
 }
 
 :root[data-palette="catppuccin-macchiato"] {
@@ -86,11 +87,11 @@
   --border: #494d64;
   --text: #cad3f5;
   --muted: #b8c0e0;
-  --accent: #f5bde6;
-  --accent-edge: #f5bde6;
+  --accent: #c6a0f6;
+  --accent-edge: #c6a0f6;
   --on-accent: #181926;
-  --playing-strength: 30%;
-  --focus: #f5bde6;
+  --playing-strength: 40%;
+  --focus: #c6a0f6;
 }
 
 :root[data-palette="catppuccin-frappe"] {
@@ -100,11 +101,11 @@
   --border: #51576d;
   --text: #c6d0f5;
   --muted: #b5bfe2;
-  --accent: #f4b8e4;
-  --accent-edge: #f4b8e4;
+  --accent: #ca9ee6;
+  --accent-edge: #ca9ee6;
   --on-accent: #232634;
-  --playing-strength: 25%;
-  --focus: #f4b8e4;
+  --playing-strength: 30%;
+  --focus: #ca9ee6;
 }
 
 @media (prefers-color-scheme: light) {
@@ -115,11 +116,11 @@
     --border: #ccd0da;
     --text: #4c4f69;
     --muted: #5c5f77;
-    --accent: #ea76cb;
-    --accent-edge: #c73ea2;
-    /* Latte's own text is too light on its pink, so this borrows Mocha's crust. */
-    --on-accent: #11111b;
-    --playing-strength: 45%;
+    --accent: #8839ef;
+    --accent-edge: #8839ef;
+    /* Mauve is dark enough in Latte to take light text: Latte's base. */
+    --on-accent: #eff1f5;
+    --playing-strength: 25%;
     --focus: #4c4f69;
     color-scheme: light;
   }
@@ -132,10 +133,10 @@
   --border: #ccd0da;
   --text: #4c4f69;
   --muted: #5c5f77;
-  --accent: #ea76cb;
-  --accent-edge: #c73ea2;
-  --on-accent: #11111b;
-  --playing-strength: 45%;
+  --accent: #8839ef;
+  --accent-edge: #8839ef;
+  --on-accent: #eff1f5;
+  --playing-strength: 25%;
   --focus: #4c4f69;
   color-scheme: light;
 }
