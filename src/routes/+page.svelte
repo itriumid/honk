@@ -11,16 +11,16 @@
     type LibraryFilePreview,
     type LibraryFileReport,
   } from "$lib/library.svelte";
+  import { PalettePicker, ThemeSwitcher } from "@itrium/palettes";
   import { playback } from "$lib/playback.svelte";
   import CategoryBar from "$lib/components/CategoryBar.svelte";
   import DockSetting from "$lib/components/DockSetting.svelte";
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import LibraryImportDialog from "$lib/components/LibraryImportDialog.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
-  import PalettePicker from "$lib/components/PalettePicker.svelte";
   import SoundEditor from "$lib/components/SoundEditor.svelte";
   import SoundPad from "$lib/components/SoundPad.svelte";
-  import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
+  import { theme } from "$lib/theme";
 
   const APP_SHORTCUTS: [AppShortcut, string][] = [
     ["stop_all", "Stop all"],
@@ -317,8 +317,8 @@
     {/each}
     <DockSetting onerror={(message) => (notice = message)} />
     <div class="appearance">
-      <PalettePicker />
-      <ThemeSwitcher />
+      <PalettePicker {theme} />
+      <ThemeSwitcher {theme} />
     </div>
   </footer>
 

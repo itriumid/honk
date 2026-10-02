@@ -139,7 +139,7 @@
   }
 
   input[type="range"] {
-    accent-color: var(--accent);
+    accent-color: var(--accent-edge);
   }
 
   button {
