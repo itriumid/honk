@@ -53,7 +53,7 @@
   }
 
   input {
-    accent-color: var(--accent);
+    accent-color: var(--accent-edge);
   }
 
   .hint {
