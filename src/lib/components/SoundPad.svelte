@@ -101,7 +101,7 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: color-mix(in srgb, var(--accent) var(--playing-strength), transparent);
+    background: color-mix(in srgb, var(--accent) var(--tint-strength), transparent);
     transform-origin: left;
     animation: fill linear forwards;
   }

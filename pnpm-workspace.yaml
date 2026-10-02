@@ -1,3 +1,5 @@
+minimumReleaseAgeExclude:
+  - '@itrium/palettes@0.1.0'
 overrides:
   # SvelteKit still asks for cookie ^0.6.0, which has GHSA-pxg6-pf52-xh8x.
   # Only the build uses it (Honk has no server), and 0.7 keeps the same API.

@@ -57,7 +57,7 @@ and a Rust backend. The README's **Architecture** and **Design** sections are th
 truth for the plan and the design tokens — read them before building a feature.
 
 - **Audio plays in Rust, never in the webview.** Don't reach for `<audio>` or the Web Audio API.
-- **Colors come from the tokens in `src/app.css`.** Never hard-code a hex value in a component.
+- **Colors come from `@itrium/palettes`** (shared with Hindsight); `src/app.css` only adds spacing, radii, fonts and the popover's overrides. Never hard-code a hex value in a component, and change a color in the package, not here.
   Text on `--accent` is always `--on-accent`.
 - **Hotkeys are never imported from a shared library by default** — see the README's import rules.
 
