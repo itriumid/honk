@@ -120,6 +120,9 @@ pub enum AppShortcut {
 
 /// The `settings` key for whether Honk shows in the Dock (macOS). Absent means yes.
 const SHOW_IN_DOCK: &str = "show_in_dock";
+/// The `settings` key for whether Honk shows in the menu bar (macOS) or the system tray
+/// (Windows, Linux). Absent means yes.
+const SHOW_IN_MENU_BAR: &str = "show_in_menu_bar";
 
 impl AppShortcut {
     pub const ALL: [AppShortcut; 2] = [AppShortcut::StopAll, AppShortcut::TogglePopover];
@@ -559,11 +562,24 @@ impl Library {
     }
 
     pub fn set_show_in_dock(&self, show: bool) -> Result<(), String> {
+        self.write_flag(SHOW_IN_DOCK, show)
+    }
+
+    pub fn show_in_menu_bar(&self) -> Result<bool, String> {
+        let connection = self.connection()?;
+        Ok(read_setting(&connection, SHOW_IN_MENU_BAR)?.as_deref() != Some("false"))
+    }
+
+    pub fn set_show_in_menu_bar(&self, show: bool) -> Result<(), String> {
+        self.write_flag(SHOW_IN_MENU_BAR, show)
+    }
+
+    fn write_flag(&self, key: &str, value: bool) -> Result<(), String> {
         self.connection()?
             .execute(
                 "INSERT INTO settings (key, value) VALUES (?1, ?2)
                  ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                params![SHOW_IN_DOCK, show.to_string()],
+                params![key, value.to_string()],
             )
             .map_err(database_error)?;
         Ok(())
@@ -1108,6 +1124,21 @@ pub(crate) mod tests {
 
         library.set_show_in_dock(true).unwrap();
         assert!(library.show_in_dock().unwrap());
+    }
+
+    #[test]
+    fn showing_in_the_menu_bar_defaults_to_yes_and_persists() {
+        let directory = scratch_directory();
+        let library = Library::open(&directory).unwrap();
+        assert!(library.show_in_menu_bar().unwrap());
+
+        library.set_show_in_menu_bar(false).unwrap();
+        assert!(!Library::open(&directory).unwrap().show_in_menu_bar().unwrap());
+        // The Dock setting is its own.
+        assert!(library.show_in_dock().unwrap());
+
+        library.set_show_in_menu_bar(true).unwrap();
+        assert!(library.show_in_menu_bar().unwrap());
     }
 
     #[test]

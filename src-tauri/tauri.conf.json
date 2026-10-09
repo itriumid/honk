@@ -35,6 +35,11 @@
     "macOS": {
       "signingIdentity": "-"
     },
+    "windows": {
+      "wix": {
+        "upgradeCode": "bd8f4c6f-43fc-57a8-8117-ff1d0546e16d"
+      }
+    },
     "publisher": "Itrium",
     "copyright": "Copyright \u00a9 2026 Itrium"
   }

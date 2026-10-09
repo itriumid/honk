@@ -209,6 +209,15 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Shows or hides the menu bar (macOS) or tray icon. The popover's hotkey works either way.
+pub fn set_tray_visible(app: &AppHandle, visible: bool) {
+    if let Some(tray) = app.tray_by_id("honk") {
+        if let Err(error) = tray.set_visible(visible) {
+            eprintln!("could not change the menu bar icon: {error}");
+        }
+    }
+}
+
 /// Shows the popover under the tray icon, or hides it if it's already showing.
 pub fn toggle(app: &AppHandle) {
     let Some(window) = app.get_webview_window(LABEL) else {

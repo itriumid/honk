@@ -1,0 +1,55 @@
+name: Microsoft Store package
+
+# Packs a published release's Windows executables into the package the Microsoft Store takes,
+# and keeps it as a workflow artifact to upload in Partner Center. Manual only: it is a step in
+# submitting a release, not something every push needs. See msix/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release to package, like v0.3.1'
+        required: true
+        type: string
+      identity-name:
+        description: "Partner Center, Product identity: Package/Identity/Name"
+        required: true
+        type: string
+      publisher:
+        description: 'Partner Center, Product identity: Package/Identity/Publisher, like CN=…'
+        required: true
+        type: string
+      publisher-display-name:
+        description: 'Partner Center, Product identity: Package/Properties/PublisherDisplayName'
+        required: true
+        type: string
+
+# Any `permissions:` block replaces the default token scopes, so grant per job.
+permissions: {}
+
+jobs:
+  package:
+    name: Package
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pack the Store package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          IDENTITY_NAME: ${{ inputs.identity-name }}
+          PUBLISHER: ${{ inputs.publisher }}
+          PUBLISHER_DISPLAY_NAME: ${{ inputs.publisher-display-name }}
+        run: scripts/build-msix.sh "$TAG" "$IDENTITY_NAME" "$PUBLISHER" "$PUBLISHER_DISPLAY_NAME" msix-out
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: honk-microsoft-store-package
+          path: msix-out/*.msixbundle
+          if-no-files-found: error
