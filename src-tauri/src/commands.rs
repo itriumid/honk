@@ -258,6 +258,17 @@ pub async fn set_app_hotkey(
     hotkey: Option<String>,
 ) -> Result<Option<String>, String> {
     let hotkey = hotkey.as_deref().map(hotkeys::normalize).transpose()?;
+    // Clearing the popover's shortcut can't leave Honk with no way to open it.
+    if shortcut == AppShortcut::TogglePopover
+        && hotkey.is_none()
+        && !reachable(
+            library.show_in_menu_bar()?,
+            library.show_in_dock()? && cfg!(target_os = "macos"),
+            false,
+        )
+    {
+        return Err(UNREACHABLE.into());
+    }
     let previous = library.app_hotkey(shortcut)?;
     library.set_app_hotkey(shortcut, hotkey.as_deref())?;
     register_or_revert(&app, hotkey.as_deref(), || {
@@ -266,10 +277,32 @@ pub async fn set_app_hotkey(
     Ok(hotkey)
 }
 
-#[tauri::command]
-pub async fn show_in_dock(library: State<'_, Library>) -> Result<bool, String> {
-    library.show_in_dock()
+/// Where Honk shows up, for the settings.
+#[derive(serde::Serialize)]
+pub struct Presence {
+    show_in_dock: bool,
+    show_in_menu_bar: bool,
+    /// Only macOS has a Dock; elsewhere "menu bar" means the system tray.
+    has_dock: bool,
 }
+
+#[tauri::command]
+pub async fn presence(library: State<'_, Library>) -> Result<Presence, String> {
+    Ok(Presence {
+        show_in_dock: library.show_in_dock()?,
+        show_in_menu_bar: library.show_in_menu_bar()?,
+        has_dock: cfg!(target_os = "macos"),
+    })
+}
+
+/// Whether there is always a way to open Honk: its icon in the menu bar (or tray), its Dock
+/// icon, or the popover's hotkey. Honk never lets the last one go.
+pub fn reachable(menu_bar: bool, dock: bool, popover_hotkey: bool) -> bool {
+    menu_bar || dock || popover_hotkey
+}
+
+const UNREACHABLE: &str =
+    "Honk needs a way to open it: the menu bar icon, the Dock icon or a popover shortcut.";
 
 /// Saves the preference and applies it now. A no-op outside macOS, which has no Dock.
 #[tauri::command]
@@ -278,8 +311,29 @@ pub async fn set_show_in_dock(
     library: State<'_, Library>,
     show: bool,
 ) -> Result<(), String> {
+    let hotkey = library.app_hotkey(AppShortcut::TogglePopover)?.is_some();
+    if !reachable(library.show_in_menu_bar()?, show && cfg!(target_os = "macos"), hotkey) {
+        return Err(UNREACHABLE.into());
+    }
     library.set_show_in_dock(show)?;
     apply_dock_visibility(&app, show)
+}
+
+/// Saves the preference and applies it now.
+#[tauri::command]
+pub async fn set_show_in_menu_bar(
+    app: AppHandle,
+    library: State<'_, Library>,
+    show: bool,
+) -> Result<(), String> {
+    let hotkey = library.app_hotkey(AppShortcut::TogglePopover)?.is_some();
+    let dock = library.show_in_dock()? && cfg!(target_os = "macos");
+    if !reachable(show, dock, hotkey) {
+        return Err(UNREACHABLE.into());
+    }
+    library.set_show_in_menu_bar(show)?;
+    popover::set_tray_visible(&app, show);
+    Ok(())
 }
 
 pub fn apply_dock_visibility(app: &AppHandle, show: bool) -> Result<(), String> {
@@ -289,6 +343,13 @@ pub fn apply_dock_visibility(app: &AppHandle, show: bool) -> Result<(), String> 
     #[cfg(not(target_os = "macos"))]
     let _ = (app, show);
     Ok(())
+}
+
+/// Quits Honk. With both icons hidden, nothing else can: ⌘Q needs the Dock icon, and the tray
+/// menu is the menu bar icon's.
+#[tauri::command]
+pub async fn quit(app: AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -322,4 +383,22 @@ fn register_or_revert(
     Err(format!(
         "the system refused that shortcut — another app may already use it ({error})"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reachable;
+
+    #[test]
+    fn honk_is_reachable_while_anything_opens_it() {
+        assert!(reachable(true, false, false), "the menu bar icon");
+        assert!(reachable(false, true, false), "the Dock icon");
+        assert!(reachable(false, false, true), "the popover shortcut");
+        assert!(reachable(true, true, true));
+    }
+
+    #[test]
+    fn honk_is_never_left_with_no_way_to_open_it() {
+        assert!(!reachable(false, false, false));
+    }
 }

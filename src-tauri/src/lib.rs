@@ -47,6 +47,8 @@ pub fn run() {
             app.manage(popover::PopoverState::default());
             popover::create(app.handle())?;
             popover::create_tray(app.handle())?;
+            let show_in_menu_bar = app.state::<library::Library>().show_in_menu_bar()?;
+            popover::set_tray_visible(app.handle(), show_in_menu_bar);
 
             app.manage(hotkeys::Hotkeys::default());
             // A shortcut another app owns shouldn't stop the app from starting; the failures
@@ -80,8 +82,10 @@ pub fn run() {
             commands::set_sound_hotkey,
             commands::app_hotkeys,
             commands::set_app_hotkey,
-            commands::show_in_dock,
+            commands::presence,
             commands::set_show_in_dock,
+            commands::set_show_in_menu_bar,
+            commands::quit,
             commands::show_main_window,
             commands::hide_popover,
             commands::hotkey_failures,
@@ -95,6 +99,16 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Opening Honk again from Finder or Spotlight brings its window back, so hiding both
+            // icons never locks anyone out.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                popover::show_main_window(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

@@ -14,7 +14,7 @@
   import { PalettePicker, ThemeSwitcher } from "@itrium/palettes";
   import { playback } from "$lib/playback.svelte";
   import CategoryBar from "$lib/components/CategoryBar.svelte";
-  import DockSetting from "$lib/components/DockSetting.svelte";
+  import PresenceSettings from "$lib/components/PresenceSettings.svelte";
   import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
   import LibraryImportDialog from "$lib/components/LibraryImportDialog.svelte";
   import OutputSettings from "$lib/components/OutputSettings.svelte";
@@ -315,7 +315,10 @@
         />
       </div>
     {/each}
-    <DockSetting onerror={(message) => (notice = message)} />
+    <PresenceSettings
+      popoverHotkey={library.appHotkeys.toggle_popover}
+      onerror={(message) => (notice = message)}
+    />
     <div class="appearance">
       <PalettePicker {theme} />
       <ThemeSwitcher {theme} />
