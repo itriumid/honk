@@ -1,6 +1,6 @@
 {
   "name": "honk",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A lightweight soundboard for the desktop, with a macOS menu bar popover",
   "type": "module",
   "scripts": {
