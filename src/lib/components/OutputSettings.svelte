@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { listOutputDevices, setOutputDevices, type OutputDevice } from "$lib/audio";
+  import { listOutputDevices, setOutputDevices, type OutputDevice } from "#lib/audio.js";
 
   let { onerror }: { onerror: (message: string) => void } = $props();
 

@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open, save } from "@tauri-apps/plugin-dialog";
-  import { playSound, stopAll } from "$lib/audio";
+  import { playSound, stopAll } from "#lib/audio.js";
   import {
     fileName,
     library,
@@ -10,17 +10,17 @@
     type ImportSummary,
     type LibraryFilePreview,
     type LibraryFileReport,
-  } from "$lib/library.svelte";
+  } from "#lib/library.svelte.js";
   import { PalettePicker, ThemeSwitcher } from "@itrium/palettes";
-  import { playback } from "$lib/playback.svelte";
-  import CategoryBar from "$lib/components/CategoryBar.svelte";
-  import PresenceSettings from "$lib/components/PresenceSettings.svelte";
-  import HotkeyRecorder from "$lib/components/HotkeyRecorder.svelte";
-  import LibraryImportDialog from "$lib/components/LibraryImportDialog.svelte";
-  import OutputSettings from "$lib/components/OutputSettings.svelte";
-  import SoundEditor from "$lib/components/SoundEditor.svelte";
-  import SoundPad from "$lib/components/SoundPad.svelte";
-  import { theme } from "$lib/theme";
+  import { playback } from "#lib/playback.svelte.js";
+  import CategoryBar from "#lib/components/CategoryBar.svelte";
+  import PresenceSettings from "#lib/components/PresenceSettings.svelte";
+  import HotkeyRecorder from "#lib/components/HotkeyRecorder.svelte";
+  import LibraryImportDialog from "#lib/components/LibraryImportDialog.svelte";
+  import OutputSettings from "#lib/components/OutputSettings.svelte";
+  import SoundEditor from "#lib/components/SoundEditor.svelte";
+  import SoundPad from "#lib/components/SoundPad.svelte";
+  import { theme } from "#lib/theme.js";
 
   const APP_SHORTCUTS: [AppShortcut, string][] = [
     ["stop_all", "Stop all"],

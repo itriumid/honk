@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { library, type Sound } from "$lib/library.svelte";
+  import { library, type Sound } from "#lib/library.svelte.js";
   import HotkeyRecorder from "./HotkeyRecorder.svelte";
 
   let { sound, onerror }: { sound: Sound; onerror: (message: string) => void } = $props();
