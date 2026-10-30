@@ -6,7 +6,7 @@ export interface Sound {
   /** Linear, 0 to 1. */
   volume: number;
   favorite: boolean;
-  /** A global-shortcut string such as `alt+Digit1`; see `$lib/hotkey`. */
+  /** A global-shortcut string such as `alt+Digit1`; see `#lib/hotkey.js`. */
   hotkey: string | null;
   category_id: number | null;
 }

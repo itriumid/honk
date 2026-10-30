@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { tick } from "svelte";
-  import { library } from "$lib/library.svelte";
+  import { library } from "#lib/library.svelte.js";
 
   let { onerror }: { onerror: (message: string) => void } = $props();
 

@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { HTMLButtonAttributes } from "svelte/elements";
-  import type { Sound } from "$lib/library.svelte";
-  import { formatHotkey } from "$lib/hotkey";
-  import type { ActivePlayback } from "$lib/playback.svelte";
+  import type { Sound } from "#lib/library.svelte.js";
+  import { formatHotkey } from "#lib/hotkey.js";
+  import type { ActivePlayback } from "#lib/playback.svelte.js";
 
   let {
     sound,

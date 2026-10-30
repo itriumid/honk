@@ -5,13 +5,13 @@
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { formatHotkey } from "$lib/hotkey";
+  import { formatHotkey } from "#lib/hotkey.js";
   import {
     fileName,
     library,
     type LibraryFilePreview,
     type LibraryFileReport,
-  } from "$lib/library.svelte";
+  } from "#lib/library.svelte.js";
 
   let {
     path,

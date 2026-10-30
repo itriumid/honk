@@ -6,10 +6,10 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { playSound, stopAll } from "$lib/audio";
-  import { library, type Sound } from "$lib/library.svelte";
-  import { playback } from "$lib/playback.svelte";
-  import SoundPad from "$lib/components/SoundPad.svelte";
+  import { playSound, stopAll } from "#lib/audio.js";
+  import { library, type Sound } from "#lib/library.svelte.js";
+  import { playback } from "#lib/playback.svelte.js";
+  import SoundPad from "#lib/components/SoundPad.svelte";
 
   /** Which pads the popover shows when not searching: favorites, everything, or a category. */
   type View = "favorites" | "all" | number;
