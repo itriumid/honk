@@ -37,6 +37,16 @@ That installs the same `.dmg`, so the first launch still needs the steps under
 [Honk isn't signed](#honk-isnt-signed-so-your-system-will-warn-you-the-first-time). Homebrew
 prints them when the installation finishes.
 
+On Windows, you can install it with [winget](https://learn.microsoft.com/windows/package-manager/winget/):
+
+```sh
+winget install Itrium.Honk
+```
+
+winget picks the installer for your processor (x64, 32-bit or ARM) and installs Honk for your
+user only, like the `setup.exe`. `winget upgrade Itrium.Honk` updates it. A new version reaches
+winget a few days after its release, once Microsoft's moderators approve it.
+
 Versions follow [Semantic Versioning](https://semver.org), and upgrading never loses your
 library. From `1.0.0` on, only a new major version can break compatibility, such as older
 `.honk` files no longer opening. Honk is still `0.x`, where a minor version may do that, so check
