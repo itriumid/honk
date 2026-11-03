@@ -1,0 +1,116 @@
+name: winget
+
+# Publishing a release opens a pull request on microsoft/winget-pkgs that adds the new version
+# of Itrium.Honk, using Microsoft's own wingetcreate. Microsoft's moderators review and merge it;
+# after that, `winget upgrade Itrium.Honk` picks the new version up.
+#
+# Run it manually (Actions → winget → Run workflow) with a tag to redo it for a release, for
+# example after the first run failed. It does nothing when winget-pkgs already has that
+# version, or a pull request open for it.
+#
+# The WINGET_TOKEN secret holds a classic personal access token with only the public_repo
+# scope (wingetcreate doesn't support fine-grained tokens). wingetcreate pushes a branch to the
+# token owner's winget-pkgs fork and opens the pull request from there, so the pull request is
+# theirs, and the owner must have signed Microsoft's Contributor License Agreement.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to submit to winget, such as v0.3.2'
+        required: true
+        type: string
+
+# Any `permissions:` block replaces the default token scopes, so grant per job.
+permissions: {}
+
+env:
+  WINGETCREATE_VERSION: v1.12.13.0
+  WINGETCREATE_SHA256: 24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea
+
+jobs:
+  submit:
+    name: Submit to winget
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check the tag is a published release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::$TAG isn't a release tag. Use vMAJOR.MINOR.PATCH, e.g. v0.3.2."
+            exit 1
+          fi
+          # Drafts don't show up by tag, and their downloads aren't public anyway.
+          if ! published=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .published_at); then
+            echo "::error::$TAG has no published release."
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+            echo "date=${published:0:10}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check winget doesn't have it yet
+        id: needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh api "repos/microsoft/winget-pkgs/contents/manifests/i/Itrium/Honk/$VERSION" --silent 2> /dev/null; then
+            echo "winget-pkgs already has Itrium.Honk $VERSION. Nothing to do."
+            echo "submit=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          open=$(gh pr list --repo microsoft/winget-pkgs --state open \
+            --search "Itrium.Honk $VERSION in:title" --json url --jq '.[].url')
+          if [ -n "$open" ]; then
+            echo "A pull request for Itrium.Honk $VERSION is already open: $open. Nothing to do."
+            echo "submit=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "submit=true" >> "$GITHUB_OUTPUT"
+
+      # Pinned and hash-checked: this binary gets the token.
+      - name: Download wingetcreate
+        if: steps.needed.outputs.submit == 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output wingetcreate.exe \
+            "https://github.com/microsoft/winget-create/releases/download/$WINGETCREATE_VERSION/wingetcreate.exe"
+          echo "$WINGETCREATE_SHA256  wingetcreate.exe" | sha256sum --check --strict
+
+      # Architectures are spelled out: the NSIS setup programs are 32-bit stubs whatever they
+      # install, so wingetcreate can't tell them apart on its own. The token goes in through
+      # the environment, never the command line, so it can't be logged.
+      - name: Open the pull request
+        if: steps.needed.outputs.submit == 'true'
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_DATE: ${{ steps.version.outputs.date }}
+        run: |
+          if [ -z "$WINGET_CREATE_GITHUB_TOKEN" ]; then
+            echo "::error::The WINGET_TOKEN secret isn't set. See the comment at the top of this workflow."
+            exit 1
+          fi
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          ./wingetcreate.exe update Itrium.Honk \
+            --version "$VERSION" \
+            --urls "$base/Honk_${VERSION}_x64-setup.exe|x64" \
+                   "$base/Honk_${VERSION}_x86-setup.exe|x86" \
+                   "$base/Honk_${VERSION}_arm64-setup.exe|arm64" \
+            --release-notes-url "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --release-date "$RELEASE_DATE" \
+            --prtitle "Update: Itrium.Honk to $VERSION" \
+            --submit --no-open
